@@ -4,12 +4,12 @@ import subprocess
 import time
 from collections import deque
 
-secure_key = "]<9A'QNWb8_"
+api_key = "+<9AkQNWb8_"
 port = 9184
 
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('', port))
+sock.bind(('192.168.50.253', port))
 sock.listen(5)
 print('Server is running, please, press ctrl+c to stop\n')
 
@@ -33,8 +33,8 @@ def search_pids(systemctl):
             break
     
 
-def restart_service(restartserv, securekey):
-    if securekey == secure_key:
+def restart_service(restartserv, apikey):
+    if apikey == api_key:
         command = f"sudo systemctl status {restartserv}"
         systemctl = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE)
         systemctl = systemctl.communicate(timeout=10)[0].decode('utf-8')
@@ -54,52 +54,80 @@ def restart_service(restartserv, securekey):
             if "Active: active" in systemctl:
                 for pid2 in pids2:
                     if pid in pids2:
-                        print(f"Error: Restarting failed")
+                        print(f"Error: Restarting failed\n")
                         conn.send(b"Error: Restarting failed")
                     else:
-                        print(f"OK: Restarting succes")
+                        print(f"OK: Restarting succes\n")
                         conn.send(b"OK: Restarting succes")
             else:
-                print(f"Error: Restarting failed, service stoped")
+                print(f"Error: Restarting failed, service stoped\n")
         else:
             print(f"Service not running\n Starting...")
             systemctl = subprocess.Popen(f"sudo systemctl start {restartserv}", shell=True, stdout=subprocess.PIPE).communicate(timeout=10)[0]
-
+            
             if str(systemctl) == "b''":
-                print(f"Service {restartserv} started")
+                print(f"Service {restartserv} started\n")
                 conn.send(b"Service started")
             else:
-                print(f"Service {restartserv} not started")
+                print(f"\nService {restartserv} not started\n")
                 conn.send(b"Service not started")
     else:
-        print("Error: Invalid secure key")
-        conn.send(b"Error: Invalid secure key")
+        print("Error: Invalid api key\n")
+        conn.send(b"Error: Invalid api key")
+
+
+def Parse_Http(req):
+    data = str(req).split(r"\r\n")
+    req = str(req)
+
+    headers['Fhirst'] = data[0]
+
+    if 'POST' in data[0]:
+        headers['Method'] = 'POST'
+    elif 'GET' in data[0]:
+        headers['Method'] = 'GET'
+    elif 'PUT' in data[0]:
+        headers['Method'] = 'PUT'
+    else:
+        headers['Method'] = '?'
+    
+    for head in data:
+        for string in strings:
+            if string in head:
+                headers[string.replace(': ', '')] = head.replace(string, '')
+    
+    return req, headers
+
+
+strings = ['Host: ',
+           'User-Agent: ',
+           'Content-Type: ',
+           ]
+
+headers = dict()
 
 
 while True:
     conn, addr = sock.accept()
-    data = conn.recv(1024)
+    req = conn.recv(1024)
 
-    data = str(data).split(r"\r\n")
-    
-    print(data[9])
-    req = data[9]
-    req = req[0:-1]
-    req = json.loads(str(req))
-    print(req)
-    i = 0
+    try:
+        req, headers = Parse_Http(req)
 
-    for string in data:
-        print(f'{i}: "{string}"\n')
-        i=i+1
-    
-    '''try:
-        req = json.loads(data)
+        if "POST" in headers['Method']:
+            if 'json' in headers['Content-Type']:
+                startjson = req.find('{')
+                endjson = req.find('}')
+                json_data = req[startjson:endjson+1]
+                json_file = json.loads(json_data)
 
-        rec_service_name = req['service_name']
-        rec_secure_key = req['secure_key']
-
-        restart_service(rec_service_name, rec_secure_key)
+                restart_service(json_file['service_name'], json_file['api_key'])
+            else:
+                print("Error: Invalid request\n")
+                conn.send(b"Error: Invalid request")
+        else:
+            print("Error: Invalid request\n")
+            conn.send(b"Error: Invalid request")
 
     except KeyError:
         conn.send(b"Error: Invalid keys")
@@ -107,7 +135,6 @@ while True:
 
     except Exception:
         conn.send(b"Error: unknown error")
-        print("Error: unknown error\n")'''
-
+        print("Error: unknown error\n")
 
 conn.close()
