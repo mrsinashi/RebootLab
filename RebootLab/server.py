@@ -1,15 +1,17 @@
 import socket
 import json
 import subprocess
-import time
+from datetime import datetime
 from collections import deque
 
 api_key = "+<9AkQNWb8_"
-port = 9184
+ip_adress = "10.0.2.15"
+log_path = "/var/log/RebootLab.log"
+port = 9185
 
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('192.168.50.253', port))
+sock.bind((ip_adress, port))
 sock.listen(5)
 print('Server is running, please, press ctrl+c to stop\n')
 
@@ -57,6 +59,7 @@ def restart_service(restartserv, apikey):
                         print(f"Error: Restarting failed\n")
                         conn.send(b"Error: Restarting failed")
                     else:
+                        log_write("[OK]:(Service:Restarting succes)", 1)
                         print(f"OK: Restarting succes\n")
                         conn.send(b"OK: Restarting succes")
             else:
@@ -80,7 +83,9 @@ def Parse_Http(req):
     data = str(req).split(r"\r\n")
     req = str(req)
 
-    headers['Fhirst'] = data[0]
+    fhirst_header = data[0]
+    starthttp = fhirst_header.find('HTTP')
+    headers['Protocol'] = fhirst_header[starthttp:]
 
     if 'POST' in data[0]:
         headers['Method'] = 'POST'
@@ -99,6 +104,22 @@ def Parse_Http(req):
     return req, headers
 
 
+def log_write(msg, info):
+    logfile = open(log_path, 'a')
+    logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}]\n")
+    
+    cnt = 0
+
+    if info:
+        logfile.write(f"[INFO]" + ":{")
+        for head in headers:
+            logfile.write(f"\"{head}={headers[head]}\",")
+        logfile.write("}\n")
+
+    logfile.write(f"{msg};\n")
+    logfile.close()
+
+
 strings = ['Host: ',
            'User-Agent: ',
            'Content-Type: ',
@@ -111,24 +132,25 @@ while True:
     conn, addr = sock.accept()
     req = conn.recv(1024)
 
-    try:
-        req, headers = Parse_Http(req)
+    #try:
+    req, headers = Parse_Http(req)
 
-        if "POST" in headers['Method']:
-            if 'json' in headers['Content-Type']:
-                startjson = req.find('{')
-                endjson = req.find('}')
-                json_data = req[startjson:endjson+1]
-                json_file = json.loads(json_data)
+    if "POST" in headers['Method']:
+        if 'json' in headers['Content-Type']:
+            startjson = req.find('{')
+            endjson = req.find('}')
+            json_data = req[startjson:endjson+1]
+            json_file = json.loads(json_data)
 
-                restart_service(json_file['service_name'], json_file['api_key'])
-            else:
-                print("Error: Invalid request\n")
-                conn.send(b"Error: Invalid request")
+            restart_service(json_file['service_name'], json_file['api_key'])
         else:
             print("Error: Invalid request\n")
             conn.send(b"Error: Invalid request")
-
+            log_write("Error: Invalid request")
+    else:
+        print("Error: Invalid request\n")
+        conn.send(b"Error: Invalid request")
+'''
     except KeyError:
         conn.send(b"Error: Invalid keys")
         print("Error: Invalid keys\n")
@@ -136,5 +158,5 @@ while True:
     except Exception:
         conn.send(b"Error: unknown error")
         print("Error: unknown error\n")
-
+'''
 conn.close()
