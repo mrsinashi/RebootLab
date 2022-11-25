@@ -1,13 +1,31 @@
 import socket
 import json
 import subprocess
+from time import sleep
 from datetime import datetime
 from collections import deque
 
 api_key = "+<9AkQNWb8_"
-ip_adress = "10.0.2.15"
+ip_adress = "192.168.50.253"
 log_path = "/var/log/RebootLab.log"
+env_path = ".env"
 port = 9185
+
+
+def parse_serv_dict(service):
+    envfile = open(env_path, 'r')
+    services_dict = envfile.readlines()
+
+    i = 0
+
+    for srvdct in services_dict:
+        services_dict[i] = srvdct.replace('\n', '').split(' ')
+        i = i + 1
+
+    services_dict = dict(services_dict)
+    
+    return services_dict[service]
+
 
 sock = socket.socket()
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -52,31 +70,43 @@ def restart_service(restartserv, apikey):
             systemctl = systemctl.communicate(timeout=10)[0].decode('utf-8')
 
             pids2 = search_pids(systemctl)
-          
+
+            if "Active: active" not in systemctl:
+                systemctl = subprocess.Popen(f"sudo systemctl start {restartserv}", shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+                systemctl = subprocess.Popen(f"sleep 1; {command}", shell=True, stdout=subprocess.PIPE)
+                
+                systemctl = systemctl.communicate(timeout=10)[0].decode('utf-8')
             if "Active: active" in systemctl:
                 for pid2 in pids2:
                     if pid in pids2:
-                        print(f"Error: Restarting failed\n")
-                        conn.send(b"Error: Restarting failed")
+                        log_write("ERROR", "Service restarting failed", f"Service: {restartserv}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+                        print(f"[ERROR]: Service restarting failed\n")
+                        conn.send(b"[ERROR] Service restarting failed")
                     else:
-                        log_write("[OK]:(Service:Restarting succes)", 1)
-                        print(f"OK: Restarting succes\n")
-                        conn.send(b"OK: Restarting succes")
+                        log_write("INFO", "Service restarting succes", f"Service: {restartserv}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+                        print(f"[OK] Service restarting succes\n")
+                        conn.send(b"[OK] Service restarting succes")
             else:
-                print(f"Error: Restarting failed, service stoped\n")
+                log_write("ERROR", "Restarting failed, service stoped", f"Service: {restartserv}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+                print(f"[ERROR] Restarting failed, service stoped\n")
+                conn.send(b"[ERROR] Restarting failed, service stoped")
         else:
             print(f"Service not running\n Starting...")
-            systemctl = subprocess.Popen(f"sudo systemctl start {restartserv}", shell=True, stdout=subprocess.PIPE).communicate(timeout=10)[0]
-            
-            if str(systemctl) == "b''":
-                print(f"Service {restartserv} started\n")
-                conn.send(b"Service started")
+            systemctl = subprocess.Popen(f"sudo systemctl start {restartserv}", shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate(timeout=10)[0]
+        
+            if ' ' not in str(systemctl):
+                log_write("INFO", "Service started", f"Service: {restartserv}")
+                print(f"[OK] Service {restartserv} started\n")
+                conn.send(b"[OK] Service started")
             else:
-                print(f"\nService {restartserv} not started\n")
-                conn.send(b"Service not started")
+                log_write("ERROR", "Service not started", f"Service: {restartserv}")
+                log_write("ERROR", systemctl.decode('UTF-8').replace('\n', ' '))
+                print(f"\n[ERROR] Service {restartserv} not started\n")
+                conn.send(b"[ERROR] Service not started")
     else:
-        print("Error: Invalid api key\n")
-        conn.send(b"Error: Invalid api key")
+        log_write("ERROR", "Invalid api key")
+        print("[ERROR] Invalid api key\n")
+        conn.send(b"[ERROR] Invalid api key")
 
 
 def Parse_Http(req):
@@ -104,19 +134,16 @@ def Parse_Http(req):
     return req, headers
 
 
-def log_write(msg, info):
+def log_write(loglevel, msg, *attrs):
     logfile = open(log_path, 'a')
-    logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}]\n")
     
-    cnt = 0
+    logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}][INFO](")
+    logfile.write(','.join([(f'"{head}={headers[head]}"') for head in headers]))
 
-    if info:
-        logfile.write(f"[INFO]" + ":{")
-        for head in headers:
-            logfile.write(f"\"{head}={headers[head]}\",")
-        logfile.write("}\n")
+    logfile.write(f")\n[{datetime.now().strftime('%d.%m.%Y_%X')}]")
+    logfile.write(f"[{loglevel}]({msg})")
+    logfile.write(f"({', '.join([(f'{attr}') for attr in attrs])});\n")
 
-    logfile.write(f"{msg};\n")
     logfile.close()
 
 
@@ -132,31 +159,36 @@ while True:
     conn, addr = sock.accept()
     req = conn.recv(1024)
 
-    #try:
-    req, headers = Parse_Http(req)
+    try:
+        req, headers = Parse_Http(req)
 
-    if "POST" in headers['Method']:
-        if 'json' in headers['Content-Type']:
-            startjson = req.find('{')
-            endjson = req.find('}')
-            json_data = req[startjson:endjson+1]
-            json_file = json.loads(json_data)
+        if "POST" in headers['Method']:
+            if 'json' in headers['Content-Type']:
+                startjson = req.find('{')
+                endjson = req.find('}')
+                json_data = req[startjson:endjson+1]
+                json_file = json.loads(json_data)
 
-            restart_service(json_file['service_name'], json_file['api_key'])
+                restartservice = parse_serv_dict(json_file['service_name'])
+
+                restart_service(restartservice, json_file['api_key'])
+            else:
+                print(f"[Error] Missing JSON data\n")
+                conn.send(b"Error: Missing JSON data")
+                log_write("Error", "Missing JSON data")
         else:
-            print("Error: Invalid request\n")
-            conn.send(b"Error: Invalid request")
-            log_write("Error: Invalid request")
-    else:
-        print("Error: Invalid request\n")
-        conn.send(b"Error: Invalid request")
-'''
-    except KeyError:
-        conn.send(b"Error: Invalid keys")
-        print("Error: Invalid keys\n")
+            print(f"[Error] Wrong method {headers['Method']}\n")
+            conn.send(b"Error: Wrong method")
+            log_write("Error", f"Wrong method {headers['Method']}")
 
-    except Exception:
-        conn.send(b"Error: unknown error")
-        print("Error: unknown error\n")
-'''
+    except KeyError as exception:
+        conn.send(b"Error: " + exception)
+        print(f"{exception}r\n")
+        log_write("Error", exception)
+
+    except Exception as exception:
+        conn.send(b"Error: exception")
+        print(f"{exception}r\n")
+        log_write("Error", exception)
+
 conn.close()
