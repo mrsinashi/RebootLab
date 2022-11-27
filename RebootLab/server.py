@@ -55,10 +55,10 @@ def get_servname_from_dict(service):
     return services_name
 
 
-def response(service, action, status):
+def response(service, action, status, code='200 OK'):
     json_data = dict(service=service, action=action, status=status)
     
-    resp = ("HTTP/1.1 200 OK\r\n"
+    resp = (f"HTTP/1.1 {code}\r\n"
             "Content-Type: application/json\r\n"
             "Server: Analizator\r\n"
             "\r\n"
@@ -113,7 +113,7 @@ def service_restart(service):
                 if pid in newpids:
                     status = "Active, restarting failed"
                     log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                    response(service, action, status)
+                    response(service, action, status, code='500 Internal Server Error')
                     print(f"[ERROR]: Service restarting failed\n")
                 else:
                     log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
@@ -123,7 +123,7 @@ def service_restart(service):
             status = "Inacive, restarting failed"
             log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
             print(f"[ERROR] Restarting failed, service stoped\n")
-            response(service, action, status)
+            response(service, action, status, code='500 Internal Server Error')
     else:
         print(f"Service inactive\n Starting...")
         sctl_start = bash_command(f"sudo systemctl start {service}", out=True)
@@ -138,7 +138,7 @@ def service_restart(service):
             status = "Dead, starting failed"
             error = sctl_start.replace('\n', ' ')
             log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", error=f"Error: {error}")
-            response(service, action, status)
+            response(service, action, status, code='500 Internal Server Error')
             print(f"\n[ERROR] Service {service} not started\n")
     
     return action, status
@@ -200,7 +200,7 @@ def service_kill(service):
     return action, status
 
 
-def Parse_Http(req):
+def parse_http(req):
     data = str(req).split(r"\r\n")
     fhirst_header = data[0]
     starthttp = fhirst_header.find('HTTP')
@@ -253,7 +253,7 @@ while True:
     req = conn.recv(1024)
 
     try:
-        req, headers = Parse_Http(req)
+        req, headers = parse_http(req)
 
         if "POST" in headers['Method']:
             if 'json' in headers['Content-Type']:
@@ -275,31 +275,31 @@ while True:
                                 service_kill(service)
                             else:
                                 log_write("ERROR", "Wrong action")
-                                response("None", "None", "Wrong action")
+                                response("None", "None", "Wrong action", code='400 Bad Request')
                                 print("[ERROR] Wrong action\n")
                         else:
                             log_write("ERROR", "Unknown service name")
-                            response("None", "None", "Unknown service name")
+                            response("None", "None", "Unknown service name", code='404 NotFound')
                             print("[ERROR] Unknown service name\n")
                     else:
                         log_write("ERROR", "Invalid API key")
-                        response("None", "None", "Invalid API key")
+                        response("None", "None", "Invalid API key", code='401 Unauthorized')
                         print("[ERROR] Invalid API key\n")
                 else:
                     log_write("Error", "Invalid request")
-                    response("None", "None", "Invalid request")
+                    response("None", "None", "Invalid request", code='400 Bad Request')
                     print("[Error] Invalid request\n")
             else:
                 log_write("Error", "Missing JSON data")
-                response("None", "None", "Missing JSON data")
+                response("None", "None", "Missing JSON data", code='400 Bad Request')
                 print("[Error] Missing JSON data\n")
         else:
             log_write("Error", f"Wrong method {headers['Method']}")
-            response("None", "None", "Wrong method")
+            response("None", "None", "Wrong method", code='405 Method Not Allowed')
             print(f"[Error] Wrong method {headers['Method']}\n") 
     except Exception as exception:
         log_write("Error", exception)
-        response("None", "None", "Error. Check the request")
+        response("None", "None", "Error. Check the request", code='400 Bad Request')
         print(f"{exception}r\n")
 
     conn.close()
