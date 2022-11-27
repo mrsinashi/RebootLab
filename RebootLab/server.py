@@ -47,9 +47,14 @@ def get_servname_from_dict(service):
     services_name = -1
 
     for env_string in services_dict:
-        if service + " " in env_string:
-            services_name = env_string[env_string.find(" ") + 1:]
-
+        if "#" in env_string:
+            if service + " " in env_string:
+                services_name = env_string[env_string.find(" ") + 1:env_string.find("#")].replace(' ', '')
+                print(services_name)
+        else:
+            if service + " " in env_string:
+                services_name = env_string[env_string.find(" ") + 1:]
+    
     return services_name
 
 
