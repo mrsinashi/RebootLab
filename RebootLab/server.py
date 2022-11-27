@@ -1,3 +1,4 @@
+import os.path
 import socket
 import json
 import subprocess
@@ -5,114 +6,200 @@ from time import sleep
 from datetime import datetime
 from collections import deque
 
+
 api_key = "+<9AkQNWb8_"
-ip_adress = "192.168.50.253"
-log_path = "/var/log/RebootLab.log"
-env_path = ".env"
+ip_adress = socket.gethostbyname(socket.gethostname())
+log_file = "/var/log/RebootLab.log"
+env_file = ".env"
 port = 9185
 
 
-def parse_serv_dict(service):
-    envfile = open(env_path, 'r')
+def init():
+    sock = socket.socket()
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((ip_adress, port))
+    sock.listen(5)
+
+    if not os.path.isfile(log_file):
+        if bash_command(f"sudo touch {log_file}"):
+            print('Can\'t create logfile\n')
+        else:
+            print('Logfile created\n')
+    
+    print('Server is running, please, press Ctrl+C to stop\n')
+
+    return sock
+
+
+def bash_command(command, out=False):
+    cmd = subprocess.Popen(command, shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    
+    if out:
+        cmd = cmd.communicate(timeout=10)[0].decode('utf-8')
+
+    return cmd
+
+
+def get_servname_from_dict(service):
+    envfile = open(env_file, 'r')
     services_dict = envfile.readlines()
 
-    i = 0
+    services_name = -1
 
-    for srvdct in services_dict:
-        services_dict[i] = srvdct.replace('\n', '').split(' ')
-        i = i + 1
+    for env_string in services_dict:
+        if service + " " in env_string:
+            services_name = env_string[env_string.find(" ") + 1:]
 
-    services_dict = dict(services_dict)
+    return services_name
+
+
+def response(service, action, status):
+    json_data = dict(service=service, action=action, status=status)
     
-    return services_dict[service]
+    resp = ("HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Server: Analizator\r\n"
+            "\r\n"
+            f"{json.dumps(json_data)}"
+            )
+
+    conn.send(bytes(resp, encoding="utf-8"))
 
 
-sock = socket.socket()
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind((ip_adress, port))
-sock.listen(5)
-print('Server is running, please, press ctrl+c to stop\n')
-
-
-def search_pids(systemctl):
-    i = 0
+def search_pids(sctl):
     pids = []
-    idpid = 0
+    id_sym = 0
 
     while True:
-        symb = ["└─", "├─",]
-        idpid = systemctl.find(symb[i])
+        symbols = ["└─", "├─",]
+        idpid = sctl.find(symbols[id_sym])
 
         if idpid != -1:
-            pidend = systemctl.find(" ", idpid+2, idpid+8)
-            pids.append(systemctl[idpid+2:pidend])
-            systemctl = systemctl.replace(symb[i], " ")
-            i = 1
+            pidend = sctl.find(" ", idpid+2, idpid+8)
+            pids.append(sctl[idpid+2:pidend])
+            sctl = sctl.replace(symbols[id_sym], " ")
+            id_sym = 1
         else:
             return pids
             break
     
 
-def restart_service(restartserv, apikey):
-    if apikey == api_key:
-        command = f"sudo systemctl status {restartserv}"
-        systemctl = subprocess.Popen([command], shell=True, stdout=subprocess.PIPE)
-        systemctl = systemctl.communicate(timeout=10)[0].decode('utf-8')
+def service_restart(service):
+    sctl_status = bash_command(f"sudo systemctl status {service}", out=True)
 
-        if "Active: active" in systemctl:
-            pids = search_pids(systemctl)
-            
-            for pid in pids:
-                print(f"PID {pid}: killing...")
-                subprocess.Popen([f"sudo kill {pid}"], shell=True, stdout=subprocess.PIPE)
-
-            systemctl = subprocess.Popen([f"sleep 1; {command}"], shell=True, stdout=subprocess.PIPE)
-            systemctl = systemctl.communicate(timeout=10)[0].decode('utf-8')
-
-            pids2 = search_pids(systemctl)
-
-            if "Active: active" not in systemctl:
-                systemctl = subprocess.Popen(f"sudo systemctl start {restartserv}", shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-                systemctl = subprocess.Popen(f"sleep 1; {command}", shell=True, stdout=subprocess.PIPE)
-                
-                systemctl = systemctl.communicate(timeout=10)[0].decode('utf-8')
-            if "Active: active" in systemctl:
-                for pid2 in pids2:
-                    if pid in pids2:
-                        log_write("ERROR", "Service restarting failed", f"Service: {restartserv}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                        print(f"[ERROR]: Service restarting failed\n")
-                        conn.send(b"[ERROR] Service restarting failed")
-                    else:
-                        log_write("INFO", "Service restarting succes", f"Service: {restartserv}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                        print(f"[OK] Service restarting succes\n")
-                        conn.send(b"[OK] Service restarting succes")
-            else:
-                log_write("ERROR", "Restarting failed, service stoped", f"Service: {restartserv}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                print(f"[ERROR] Restarting failed, service stoped\n")
-                conn.send(b"[ERROR] Restarting failed, service stoped")
-        else:
-            print(f"Service not running\n Starting...")
-            systemctl = subprocess.Popen(f"sudo systemctl start {restartserv}", shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate(timeout=10)[0]
+    if "Active: active" in sctl_status:
+        pids = search_pids(sctl_status)
         
-            if ' ' not in str(systemctl):
-                log_write("INFO", "Service started", f"Service: {restartserv}")
-                print(f"[OK] Service {restartserv} started\n")
-                conn.send(b"[OK] Service started")
-            else:
-                log_write("ERROR", "Service not started", f"Service: {restartserv}")
-                log_write("ERROR", systemctl.decode('UTF-8').replace('\n', ' '))
-                print(f"\n[ERROR] Service {restartserv} not started\n")
-                conn.send(b"[ERROR] Service not started")
+        for pid in pids:
+            bash_command(f"sudo kill {pid}")
+            print(f"PID {pid}: killing...")
+        
+        sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
+        newpids = search_pids(sctl_status)
+
+        if "Active: active" not in sctl_status:
+            bash_command(f"sudo systemctl start {service}", out=False)
+            sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
+            action = "Kill, start"
+        else:
+            action = "Kill"
+        
+        if "Active: active" in sctl_status:
+            status = "Active, restarting successful"
+            
+            for items in newpids:
+                if pid in newpids:
+                    status = "Active, restarting failed"
+                    log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+                    response(service, action, status)
+                    print(f"[ERROR]: Service restarting failed\n")
+                else:
+                    log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+                    response(service, action, status)
+                    print(f"[OK] Service restarting successful\n")
+        else:
+            status = "Inacive, restarting failed"
+            log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+            print(f"[ERROR] Restarting failed, service stoped\n")
+            response(service, action, status)
     else:
-        log_write("ERROR", "Invalid api key")
-        print("[ERROR] Invalid api key\n")
-        conn.send(b"[ERROR] Invalid api key")
+        print(f"Service inactive\n Starting...")
+        sctl_start = bash_command(f"sudo systemctl start {service}", out=True)
+        action = "Start"
+    
+        if ' ' not in sctl_start:
+            status = "Active, starting successful"
+            log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}")
+            response(service, action, status)
+            print(f"[OK] Service {service} started\n")
+        else:
+            status = "Dead, starting failed"
+            error = sctl_start.replace('\n', ' ')
+            log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", error=f"Error: {error}")
+            response(service, action, status)
+            print(f"\n[ERROR] Service {service} not started\n")
+    
+    return action, status
+
+
+def service_status(service, full=True):
+    sctlstatus = bash_command(f"sudo systemctl status {service}",out=True)
+    start = sctlstatus.find('Active: ')
+    
+    if full:
+        end = sctlstatus.find(')', start)
+        status = sctlstatus[start+8:end+1]
+    else:
+        end = sctlstatus.find('(', start)
+        status = sctlstatus[start+8:end-1]
+       
+    log_write("INFO", f"Service: {service}", f"Status: {status}")
+    response(service, "status", status)
+    print(f"{service} status: {status}\n")
+
+    return status
+
+
+def service_kill(service):
+    sctl_status = bash_command(f"sudo systemctl status {service}", out=True)
+    
+    if "Active: active" in sctl_status:
+        pids = search_pids(sctl_status)
+        bash_command(f"sudo systemctl stop {service}")
+        sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
+        action = "Stop"
+
+        if "Active: active" in sctl_status:
+            action = "Stop, kill"
+
+            for pid in pids:
+                bash_command(f"sudo kill {pid}")
+                print(f"PID {pid}: killing...")
+
+            sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
+            
+            if "Active: active" in sctl_status:
+                status = "Active, stop failed"
+                log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+                response(service, action, status)
+                print(f"[ERROR]: Service stop failed\n")
+        else:
+            status = "Inactive, stop successful"
+            log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+            print(f"[INFO] Service stoped\n")
+            response(service, action, status)
+    else:
+        status = "Service already stopped"
+        action = "None"
+        log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}")
+        print(f"[INFO] Service already stopped\n")
+        response(service, action, status)
+    
+    return action, status
 
 
 def Parse_Http(req):
     data = str(req).split(r"\r\n")
-    req = str(req)
-
     fhirst_header = data[0]
     starthttp = fhirst_header.find('HTTP')
     headers['Protocol'] = fhirst_header[starthttp:]
@@ -131,18 +218,21 @@ def Parse_Http(req):
             if string in head:
                 headers[string.replace(': ', '')] = head.replace(string, '')
     
-    return req, headers
+    return str(req), headers
 
 
-def log_write(loglevel, msg, *attrs):
-    logfile = open(log_path, 'a')
+def log_write(loglevel, *attrs, error=''):
+    logfile = open(log_file, 'a')
+    logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}][INFO]")
+    logfile.write("(" + ','.join([(f'"{head}={headers[head]}"') for head in headers]) + ')\n')
     
-    logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}][INFO](")
-    logfile.write(','.join([(f'"{head}={headers[head]}"') for head in headers]))
-
-    logfile.write(f")\n[{datetime.now().strftime('%d.%m.%Y_%X')}]")
-    logfile.write(f"[{loglevel}]({msg})")
-    logfile.write(f"({', '.join([(f'{attr}') for attr in attrs])});\n")
+    if error != '':
+        logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}][ERROR]")
+        logfile.write(f"({error})\n")
+    
+    logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}][{loglevel}]")
+    quote = '"'
+    logfile.write(f"({','.join([(f'{quote}{attr}{quote}') for attr in attrs])});\n")
 
     logfile.close()
 
@@ -153,6 +243,7 @@ strings = ['Host: ',
            ]
 
 headers = dict()
+sock = init()
 
 
 while True:
@@ -164,31 +255,49 @@ while True:
 
         if "POST" in headers['Method']:
             if 'json' in headers['Content-Type']:
-                startjson = req.find('{')
-                endjson = req.find('}')
-                json_data = req[startjson:endjson+1]
+                startjson = req.find('{"')
+                endjson = req.find('"}')
+                json_data = req[startjson:endjson+2]
                 json_file = json.loads(json_data)
 
-                restartservice = parse_serv_dict(json_file['service_name'])
+                if 'service_name' in json_file and 'action' in json_file and 'api_key' in json_file:
+                    if json_file['api_key'] == api_key:
+                        service = get_servname_from_dict(json_file['service_name'])
 
-                restart_service(restartservice, json_file['api_key'])
+                        if service != -1:
+                            if json_file['action'] == 'status':
+                                service_status(service)
+                            elif json_file['action'] == 'restart' or json_file['action'] == 'start':
+                                service_restart(service)
+                            elif json_file['action'] == 'stop' or json_file['action'] == 'kill':
+                                service_kill(service)
+                            else:
+                                log_write("ERROR", "Wrong action")
+                                response("None", "None", "Wrong action")
+                                print("[ERROR] Wrong action\n")
+                        else:
+                            log_write("ERROR", "Unknown service name")
+                            response("None", "None", "Unknown service name")
+                            print("[ERROR] Unknown service name\n")
+                    else:
+                        log_write("ERROR", "Invalid API key")
+                        response("None", "None", "Invalid API key")
+                        print("[ERROR] Invalid API key\n")
+                else:
+                    log_write("Error", "Invalid request")
+                    response("None", "None", "Invalid request")
+                    print("[Error] Invalid request\n")
             else:
-                print(f"[Error] Missing JSON data\n")
-                conn.send(b"Error: Missing JSON data")
                 log_write("Error", "Missing JSON data")
+                response("None", "None", "Missing JSON data")
+                print("[Error] Missing JSON data\n")
         else:
-            print(f"[Error] Wrong method {headers['Method']}\n")
-            conn.send(b"Error: Wrong method")
             log_write("Error", f"Wrong method {headers['Method']}")
-
-    except KeyError as exception:
-        conn.send(b"Error: " + exception)
-        print(f"{exception}r\n")
-        log_write("Error", exception)
-
+            response("None", "None", "Wrong method")
+            print(f"[Error] Wrong method {headers['Method']}\n") 
     except Exception as exception:
-        conn.send(b"Error: exception")
-        print(f"{exception}r\n")
         log_write("Error", exception)
+        response("None", "None", "Error. Check the request")
+        print(f"{exception}r\n")
 
-conn.close()
+    conn.close()
