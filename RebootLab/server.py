@@ -2,9 +2,7 @@ import os.path
 import socket
 import json
 import subprocess
-from time import sleep
 from datetime import datetime
-from collections import deque
 
 
 api_key = "+<9AkQNWb8_"
@@ -38,7 +36,6 @@ def bash_command(command, out=False):
         cmd = cmd.communicate(timeout=10)[0].decode('utf-8')
 
     return cmd
-
 
 def get_servname_from_dict(service):
     envfile = open(env_file, 'r')
