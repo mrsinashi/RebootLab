@@ -37,6 +37,7 @@ def bash_command(command, out=False):
 
     return cmd
 
+
 def get_servname_from_dict(service):
     envfile = open(env_file, 'r')
     services_dict = envfile.readlines()
