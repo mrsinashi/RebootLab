@@ -1,56 +1,98 @@
 from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 from socket import gethostbyname, gethostname
-from io import BytesIO
 
 import os.path
-import socket
 import json
 import subprocess
 from datetime import datetime
+from time import sleep
+
 
 api_key = "+<9AkQNWb8_"
 ip_adress = gethostbyname(gethostname())
-log_file = "/var/log/RebootLab.log"
+log_file = "log.json"
 env_file = ".env"
 port = 9185
 
 
 def run():
-  httpd = HTTPServer((ip_adress, port), HttpGetHandler)
-  
-  try:
-      print('Server is running, please, press Ctrl+C to stop\n')
-      httpd.serve_forever()
-  except KeyboardInterrupt:
-      httpd.server_close()
-      print('Errot: server cant be running\n')
+    httpd = HTTPServer((ip_adress, port), HttpHandler)
+    
+    try:
+        print('Server is running, please, press Ctrl+C to stop\n')
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        httpd.server_close()
+        print('Server closed by KeyboardInterrupt\n')
 
 
-class HttpGetHandler(BaseHTTPRequestHandler):
+class HttpHandler(BaseHTTPRequestHandler):
 
-    def _set_headers(self):
-        self.send_response(200)
+    def _send_response(self, code, json=None):
+        self.send_response(code)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-
-    def do_GET(self):
-        self._set_headers()
-        self.wfile.write(b"")
+        self.wfile.write(bytes(str(json), 'utf-8'))
 
     def do_POST(self):
-        self._set_headers()
         content_len = int(self.headers['Content-Length'])
-        post_body = str(self.rfile.read(content_len))
-        print(str(self.headers)+post_body)
-        #print(post_body)
-        self.wfile.write(b"received post request:" + bytes(post_body, 'utf-8'))
+        post_body = str(self.rfile.read(content_len)).decode()
+        print(post_body)
+
+        json_data = json.load(post_body)
+                
+        '''if 'json' in self.headers['Content-Type']:
+            #startjson = post_body.find('{"')
+            #endjson = post_body.find('"}')
+            #json_data = post_body[startjson:endjson+2]
+            
+            
+
+            try:
+                json_file = json.loads(json_data)
+            except:
+                json_file = None
+
+            if json_file != None:
+                if 'service_name' in json_file and 'action' in json_file and 'api_key' in json_file:
+                    if json_file['api_key'] == api_key:
+                        service = get_servname_from_dict(json_file['service_name'])
+
+                        if service != -1:
+                            if json_file['action'] == 'status':
+                                code, json_response = service_status(service)
+                            elif json_file['action'] == 'restart' or json_file['action'] == 'start':
+                                code, json_response = service_restart(service)
+                            elif json_file['action'] == 'stop' or json_file['action'] == 'kill':
+                                code, json_response = service_kill(service)
+                            else:
+                                log_write("ERROR", "Wrong action")
+                                print("[ERROR] Wrong action\n")
+
+                            json_response = json.dumps(json_response)
+                            self._send_response(code, json_response)
+                        else:
+                            log_write("ERROR", "Unknown service name")
+                            self._send_response(404)
+                            print("[ERROR] Unknown service name\n")
+                    else:
+                        log_write("ERROR", "Invalid API key")
+                        self._send_response(401)
+                        print("[ERROR] Invalid API key\n")
+                else:
+                    log_write("Error", "Invalid request")
+                    self._send_response(400)
+                    print("[Error] Invalid request\n")
+            else:
+                log_write("Error", "Invalid JSON")
+                self._send_response(400)
+                print("[Error] Invalid JSON\n")
+        else:
+            log_write("Error", "Missing JSON data")
+            self._send_response(400)
+            print("[Error] Missing JSON data\n")'''
         
-        #service_restart('redis-server.service')
-
-    def do_PUT(self):
-        self.do_POST()
-
 
 def service_restart(service):
     sctl_status = bash_command(f"sudo systemctl status {service}", out=True)
@@ -78,18 +120,18 @@ def service_restart(service):
             for items in newpids:
                 if pid in newpids:
                     status = "Active, restarting failed"
+                    code = 500
                     log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                    #response(service, action, status, code='500 Internal Server Error')
                     print(f"[ERROR]: Service restarting failed\n")
                 else:
+                    code = 200
                     log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                    #response(service, action, status)
                     print(f"[OK] Service restarting successful\n")
         else:
             status = "Inacive, restarting failed"
+            code=500
             log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
             print(f"[ERROR] Restarting failed, service stoped\n")
-            #response(service, action, status, code='500 Internal Server Error')
     else:
         print(f"Service inactive\n Starting...")
         sctl_start = bash_command(f"sudo systemctl start {service}", out=True)
@@ -97,17 +139,19 @@ def service_restart(service):
     
         if ' ' not in sctl_start:
             status = "Active, starting successful"
+            code = 200
             log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}")
-            #response(service, action, status)
             print(f"[OK] Service {service} started\n")
         else:
             status = "Dead, starting failed"
+            code = 500
             error = sctl_start.replace('\n', ' ')
             log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", error=f"Error: {error}")
-            #response(service, action, status, code='500 Internal Server Error')
             print(f"\n[ERROR] Service {service} not started\n")
     
-    return action, status
+    json_data = dict(serice=service, action=action, status=status)
+
+    return code, json_data
 
 
 def service_status(service, full=True):
@@ -121,11 +165,14 @@ def service_status(service, full=True):
         end = sctlstatus.find('(', start)
         status = sctlstatus[start+8:end-1]
        
+    code = 200
+
     log_write("INFO", f"Service: {service}", f"Status: {status}")
-    #response(service, "status", status)
     print(f"{service} status: {status}\n")
 
-    return status
+    json_data = dict(serice=service, action='status', status=status)
+
+    return code, json_data
 
 
 def service_kill(service):
@@ -148,22 +195,25 @@ def service_kill(service):
             
             if "Active: active" in sctl_status:
                 status = "Active, stop failed"
+                code = 200
                 log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                #response(service, action, status)
                 print(f"[ERROR]: Service stop failed\n")
         else:
             status = "Inactive, stop successful"
+            code = 200
             log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
             print(f"[INFO] Service stoped\n")
-            #response(service, action, status)
     else:
         status = "Service already stopped"
         action = "None"
+        code = 200
         log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}")
         print(f"[INFO] Service already stopped\n")
-        #response(service, action, status)
+
+    json_data = dict(serice=service, action=action, status=status)
     
-    return action, status
+    return code, json_data
+
 
 def bash_command(command, out=False):
     cmd = subprocess.Popen(command, shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
@@ -210,7 +260,29 @@ def search_pids(sctl):
             break
 
 
-def log_write(loglevel, *attrs, error=''):
+def log_write(loglevel, *items):
+    try:
+        logfile = open(log_file, 'x')
+        logfile.close()
+    except:
+        pass
+    
+    log_entry = dict(loglevel=loglevel, data_time=datetime.now().strftime('%d.%m.%Y_%X'))
+    log_data = json.load(open(log_file))
+    log_data.append(log_entry)
+
+    sleep(5)
+
+    with open(log_file, 'w') as logfile:
+        json.dump(log_data, logfile, indent=2)
+
+    #for item in items:
+    #    log_entry[item]
+
+    #logfile.close()
+    
+
+def logwrite(loglevel, *attrs, error=''):
     logfile = open(log_file, 'a')
     logfile.write(f"[{datetime.now().strftime('%d.%m.%Y_%X')}][INFO]")
     #logfile.write("(" + ','.join([(f'"{head}={headers[head]}"') for head in headers]) + ')\n')
