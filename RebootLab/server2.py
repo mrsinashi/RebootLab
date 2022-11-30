@@ -42,7 +42,7 @@ class HttpHandler(BaseHTTPRequestHandler):
 
         json_data = json.load(post_body)
                 
-        '''if 'json' in self.headers['Content-Type']:
+        if 'json' in self.headers['Content-Type']:
             #startjson = post_body.find('{"')
             #endjson = post_body.find('"}')
             #json_data = post_body[startjson:endjson+2]
@@ -91,7 +91,7 @@ class HttpHandler(BaseHTTPRequestHandler):
         else:
             log_write("Error", "Missing JSON data")
             self._send_response(400)
-            print("[Error] Missing JSON data\n")'''
+            print("[Error] Missing JSON data\n")
         
 
 def service_restart(service):
