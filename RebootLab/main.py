@@ -28,7 +28,6 @@ async def recieve_post(request: Request, response: Response):
   
     if request.api_key != api_key:
         log_write("ERROR", message='Invalid API key')
-        print("[ERROR] Invalid API key\n")
         response.status_code = code.HTTP_401_UNAUTHORIZED
         
         return {'ok': False, 'message': 'Invalid API key'}
@@ -37,7 +36,6 @@ async def recieve_post(request: Request, response: Response):
 
     if service == -1:
         log_write("eroRr", message='Unknown service name')
-        print("[ERROR] Unknown service name\n")
         response.status_code = code.HTTP_404_NOT_FOUND
         
         return {'ok': False, 'message': 'Unknown service name'}
@@ -92,13 +90,13 @@ def search_pids(sctl):
 
     while True:
         symbols = ["└─", "├─",]
-        idpid = sctl.find(symbols[id_sym])
+        pid_start = sctl.find(symbols[id_sym]) + 2
 
-        if idpid == -1:
+        if pid_start == -1:
             return pids
 
-        pidend = sctl.find(" ", idpid+2, idpid+8)
-        pids.append(sctl[idpid+2:pidend])
+        pid_end = sctl.find(" ", pid_start, pid_start+6)
+        pids.append(sctl[pid_start:pid_end])
         sctl = sctl.replace(symbols[id_sym], " ")
         id_sym = 1
 
@@ -112,21 +110,19 @@ def do_action(service, action):
         case 'stop' | 'kill':
             return service_stop(service)
         case _:
-            #log_write("ERROR", "Wrong action")
-            print("[ERROR] Wrong action\n")
-            return None
+            log_write("ERROR", message="Wrong action")
+            return code.HTTP_404_NOT_FOUND, {'ok': False, 'message': 'Wrong action'}
 
 
 def service_status(service):
-    sctlstatus = bash_command(f"sudo systemctl status {service}", out=True)
-    start = sctlstatus.find('Active: ')
-    end = sctlstatus.find(')', start)
-    status = sctlstatus[start+8:end+1]
+    sctl_status = bash_command(f"sudo systemctl status {service}", out=True)
+    status_start = sctl_status.find('Active: ') + 8
+    status_end = sctl_status.find(')', status_start) + 1
+    status = sctl_status[status_start:status_end]
 
-    log_write("INFO", dict(serice=service, action='status', status=status))
-    print(f"{service} status: {status}\n")
+    log_write("INFO", serice=service, action='status', status=status)
 
-    return code.HTTP_200_OK, dict(serice=service, action='status', status=status)
+    return code.HTTP_200_OK, dict(service=service, action='status', status=status)
 
 
 def service_restart(service):
@@ -155,18 +151,15 @@ def service_restart(service):
             for items in newpids:
                 if pid in newpids:
                     status = "Active, restarting failed"
-                    code = 500
-                    log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                    print(f"[ERROR]: Service restarting failed\n")
+                    status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
+                    log_write("ERROR", status=status, action=action, service=service, pids=', '.join([str(f'{pidid}') for pidid in pids]))
                 else:
-                    code = 200
-                    log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-                    print(f"[OK] Service restarting successful\n")
+                    status_code = code.HTTP_200_OK
+                    log_write("INFO", status=status, action=action, service=service, pids=', '.join([str(f'{pidid}') for pidid in pids]))
         else:
-            status = "Inacive, restarting failed"
-            code=500
+            status = "Inacive, restarting failed, service stoped"
+            status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
             log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
-            print(f"[ERROR] Restarting failed, service stoped\n")
     else:
         print(f"Service inactive\n Starting...")
         sctl_start = bash_command(f"sudo systemctl start {service}", out=True)
@@ -174,19 +167,17 @@ def service_restart(service):
     
         if ' ' not in sctl_start:
             status = "Active, starting successful"
-            code = 200
-            log_write("INFO", f"Status: {status}", f"Action: {action}", f"Service: {service}")
-            print(f"[OK] Service {service} started\n")
+            status_code = code.HTTP_200_OK
+            log_write("INFO", status=status, action=action, service=service)
         else:
-            status = "Dead, starting failed"
-            code = 500
+            status = "Inactive, starting failed"
+            status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
             error = sctl_start.replace('\n', ' ')
-            log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", error=f"Error: {error}")
-            print(f"\n[ERROR] Service {service} not started\n")
-    
-    json_data = dict(serice=service, action=action, status=status)
+            log_write("ERROR", status=status, action=action, service=service, error=error)
+                
+    response = dict(serice=service, action=action, status=status)
 
-    return code, json_data
+    return status_code, response
 
 
 def service_stop():
