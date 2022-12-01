@@ -59,11 +59,12 @@ def log_write(loglevel, **log_items):
         logfile.truncate(logfile.tell() - 2)
         
         log_string = dict(loglevel=loglevel.upper(), datetime=datetime.now().strftime('%d.%m.%Y_%X'))
-        
+
         for key, value in log_items.items():
             log_string[f'{key}'] = value
         
         logfile.write(",\n  " + json.dumps(log_string) + "\n]")
+        print(','.join([(f"{key}={value}") for key, value in log_items.items()]))
     
 
 def get_servname_from_env(service):
@@ -90,10 +91,12 @@ def search_pids(sctl):
 
     while True:
         symbols = ["└─", "├─",]
-        pid_start = sctl.find(symbols[id_sym]) + 2
+        pid_start = sctl.find(symbols[id_sym])
 
         if pid_start == -1:
             return pids
+        
+        pid_start = pid_start + 2
 
         pid_end = sctl.find(" ", pid_start, pid_start+6)
         pids.append(sctl[pid_start:pid_end])
