@@ -97,7 +97,7 @@ def search_pids(sctl):
 
         pid_end = sctl.find(" ", pid_start, pid_start+6)
         pids.append(sctl[pid_start:pid_end])
-        sctl = sctl.replace(symbols[id_sym], " ")
+        sctl = sctl.replace(symbols[id_sym], "__")
         id_sym = 1
 
 
@@ -141,9 +141,9 @@ def service_restart(service):
         if "Active: active" not in sctl_status:
             bash_command(f"sudo systemctl start {service}", out=False)
             sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
-            action = "Kill, start"
+            action = "kill, start"
         else:
-            action = "Kill"
+            action = "kill"
         
         if "Active: active" in sctl_status:
             status = "Active, restarting successful"
@@ -152,33 +152,66 @@ def service_restart(service):
                 if pid in newpids:
                     status = "Active, restarting failed"
                     status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-                    log_write("ERROR", status=status, action=action, service=service, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+                    log_write("ERROR", action=action, service=service, status=status, pids=', '.join([str(f'{pidid}') for pidid in pids]))
                 else:
                     status_code = code.HTTP_200_OK
-                    log_write("INFO", status=status, action=action, service=service, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+                    log_write("INFO", action=action, service=service, status=status, pids=', '.join([str(f'{pidid}') for pidid in pids]))
         else:
             status = "Inacive, restarting failed, service stoped"
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-            log_write("ERROR", f"Status: {status}", f"Action: {action}", f"Service: {service}", f"PIDS: {(' '.join([str(f'{pidid}') for pidid in pids]))}")
+            log_write("ERROR", action=action, service=service, status=status, pids=', '.join([str(f'{pidid}') for pidid in pids]))
     else:
         print(f"Service inactive\n Starting...")
         sctl_start = bash_command(f"sudo systemctl start {service}", out=True)
-        action = "Start"
+        action = "start"
     
         if ' ' not in sctl_start:
             status = "Active, starting successful"
             status_code = code.HTTP_200_OK
-            log_write("INFO", status=status, action=action, service=service)
+            log_write("INFO", action=action, service=service, status=status)
         else:
             status = "Inactive, starting failed"
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
             error = sctl_start.replace('\n', ' ')
-            log_write("ERROR", status=status, action=action, service=service, error=error)
+            log_write("ERROR", action=action, service=service, status=status, error=error)
                 
     response = dict(serice=service, action=action, status=status)
 
     return status_code, response
 
 
-def service_stop():
-    pass
+def service_stop(service):
+    sctl_status = bash_command(f"sudo systemctl status {service}", out=True)
+    
+    if "Active: active" in sctl_status:
+        pids = search_pids(sctl_status)
+        bash_command(f"sudo systemctl stop {service}")
+        sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
+        action = "stop"
+
+        if "Active: active" in sctl_status:
+            action = "Stop, kill"
+
+            for pid in pids:
+                bash_command(f"sudo kill {pid}")
+                print(f"PID {pid}: killing...")
+
+            sctl_status = bash_command(f"sleep 1; sudo systemctl status {service}", out=True)
+            
+            if "Active: active" in sctl_status:
+                status = "Active, stop failed"
+                status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
+                log_write("ERROR", status=status, action=action, service=service, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+        else:
+            status = "Inactive, stop successful"
+            status_code = code.HTTP_200_OK
+            log_write("INFO", status=status, action=action, service=service, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+    else:
+        status = "Service already stopped"
+        action = "none"
+        status_code = code.HTTP_200_OK
+        log_write("INFO", status=status, action=action, service=service)
+    
+    response = dict(serice=service, action=action, status=status)
+
+    return status_code, response
