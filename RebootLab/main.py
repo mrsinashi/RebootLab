@@ -9,7 +9,7 @@ from datetime import datetime
 
 
 api_key = "+<9AkQNWb8_"
-log_file = "/var/log/RebootLab.log"
+log_file = "log.json"
 env_file = ".env"
 port = 9185
 
@@ -27,7 +27,7 @@ app = FastAPI()
 async def recieve_post(request: Request, response: Response):
   
     if request.api_key != api_key:
-        #log_write("ERROR", "Invalid API key")
+        log_write("ERROR", message='Invalid API key')
         print("[ERROR] Invalid API key\n")
         response.status_code = code.HTTP_401_UNAUTHORIZED
         
@@ -36,7 +36,7 @@ async def recieve_post(request: Request, response: Response):
     service = get_servname_from_env(request.service_name)
 
     if service == -1:
-        #log_write("ERROR", "Unknown service name")
+        log_write("eroRr", message='Unknown service name')
         print("[ERROR] Unknown service name\n")
         response.status_code = code.HTTP_404_NOT_FOUND
         
@@ -56,20 +56,17 @@ def bash_command(command, out=False):
     return cmd
 
 
-def log_write(loglevel, *items):
-    try:
-        logfile = open(log_file, 'x')
-        logfile.close()
-    except:
-        pass
+def log_write(loglevel, **log_items):
+    with open(log_file, 'a+', encoding='utf-8') as logfile:
+        logfile.truncate(logfile.tell() - 2)
+        
+        log_string = dict(loglevel=loglevel.upper(), datetime=datetime.now().strftime('%d.%m.%Y_%X'))
+        
+        for key, value in log_items.items():
+            log_string[f'{key}'] = value
+        
+        logfile.write(",\n  " + json.dumps(log_string) + "\n]")
     
-    log_entry = dict(loglevel=loglevel, data_time=datetime.now().strftime('%d.%m.%Y_%X'))
-    log_data = json.load(open(log_file))
-    log_data.append(log_entry)
-
-    with open(log_file, 'w') as logfile:
-        json.dump(log_data, logfile, indent=2)
-
 
 def get_servname_from_env(service):
     envfile = open(env_file, 'r')
@@ -97,13 +94,13 @@ def search_pids(sctl):
         symbols = ["└─", "├─",]
         idpid = sctl.find(symbols[id_sym])
 
-        if idpid != -1:
-            pidend = sctl.find(" ", idpid+2, idpid+8)
-            pids.append(sctl[idpid+2:pidend])
-            sctl = sctl.replace(symbols[id_sym], " ")
-            id_sym = 1
-        else:
+        if idpid == -1:
             return pids
+
+        pidend = sctl.find(" ", idpid+2, idpid+8)
+        pids.append(sctl[idpid+2:pidend])
+        sctl = sctl.replace(symbols[id_sym], " ")
+        id_sym = 1
 
 
 def do_action(service, action):
@@ -126,7 +123,7 @@ def service_status(service):
     end = sctlstatus.find(')', start)
     status = sctlstatus[start+8:end+1]
 
-    #log_write("INFO", f"Service: {service}", f"Status: {status}")
+    log_write("INFO", dict(serice=service, action='status', status=status))
     print(f"{service} status: {status}\n")
 
     return code.HTTP_200_OK, dict(serice=service, action='status', status=status)

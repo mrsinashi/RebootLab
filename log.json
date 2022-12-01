@@ -1,22 +1,12 @@
 [
   {
     "loglevel": "INFO",
-    "data_time": "29.11.2022_14:39:42"
+    "data_time": "29.11.2022_14:39:42",
+    "service": "redis",
+    "actin": "status"
   },
-  {
-    "loglevel": "INFO",
-    "data_time": "29.11.2022_14:45:41"
-  },
-  {
-    "loglevel": "INFO",
-    "data_time": "29.11.2022_14:45:44"
-  },
-  {
-    "loglevel": "INFO",
-    "data_time": "29.11.2022_14:45:47"
-  },
-  {
-    "loglevel": "INFO",
-    "data_time": "29.11.2022_14:47:11"
-  }
+  {"loglevel": "ERROR", "datetime": "01.12.2022_16:38:56", "message": "Invalid API key"},
+  {"loglevel": "ERROR", "datetime": "01.12.2022_16:39:00", "message": "Invalid API key"},
+  {"loglevel": "ERROR", "datetime": "01.12.2022_16:39:02", "message": "Invalid API key"},
+  {"loglevel": "ERROR", "datetime": "01.12.2022_16:39:03", "message": "Invalid API key"}
 ]
