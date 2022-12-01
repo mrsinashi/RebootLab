@@ -1,8 +1,5 @@
-from fastapi import FastAPI, Response, status as code
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Response, Header, status as code
 from pydantic import BaseModel
-import socket
 import json
 import subprocess
 from datetime import datetime
@@ -26,6 +23,9 @@ app = FastAPI()
 @app.post("/", status_code=code.HTTP_200_OK)
 async def recieve_post(request: Request, response: Response):
   
+    #log_write("INFO", )
+    
+    
     if request.api_key != api_key:
         log_write("ERROR", message='Invalid API key')
         response.status_code = code.HTTP_401_UNAUTHORIZED
@@ -56,6 +56,7 @@ def bash_command(command, out=False):
 
 def log_write(loglevel, **log_items):
     with open(log_file, 'a+', encoding='utf-8') as logfile:
+        print(logfile.tell())
         logfile.truncate(logfile.tell() - 2)
         
         log_string = dict(loglevel=loglevel.upper(), datetime=datetime.now().strftime('%d.%m.%Y_%X'))
