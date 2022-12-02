@@ -71,7 +71,7 @@ def log_create():
         logfile.close()
 
 
-def log_write(loglevel, req_info=False, **log_items):
+def log_write(loglevel, **log_items):
     log_create()
 
     with open(log_file, 'a+', encoding='utf-8') as logfile:
