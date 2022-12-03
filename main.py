@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Response, Header, status as code
+from fastapi import FastAPI, Response, status as code
 from pydantic import BaseModel
 import os.path
 import json
@@ -6,8 +6,7 @@ import subprocess
 from datetime import datetime
 
 
-api_keys = dict(l2='+<9AkQNWb8_',
-                other='123qweasd')
+api_keys = dict(l2='+<9AkQNWb8_')
 log_file = "log.json"
 env_file = ".env"
 port = 9185
@@ -23,7 +22,7 @@ class Request(BaseModel):
 
 
 @app.post("/", status_code=code.HTTP_200_OK)
-async def recieve_post(request: Request, response: Response):
+async def service(request: Request, response: Response):
     login = auth_check(request.api_key)
 
     if login == -1:
@@ -97,18 +96,14 @@ def get_servname_from_env(service):
     envfile = open(env_file, 'r')
     services_dict = envfile.readlines()
 
-    services_name = -1
+    service_name = -1
 
     for env_string in services_dict:
-        if "#" in env_string:
-            if service + " " in env_string:
-                services_name = env_string[env_string.find(' ') + 1:env_string.find('#')].replace(' ', '')
-                print(services_name)
-        else:
-            if service + " " in env_string:
-                services_name = env_string[env_string.find(' ') + 1:].replace('\n', '')
+        if service + "=" in env_string:
+            service_name = env_string[env_string.find('=') + 1:env_string.find('#')].strip(' #\n')
+            print(service_name)
     
-    return services_name
+    return service_name
 
 
 def search_pids(sctl):
@@ -137,7 +132,7 @@ def do_action(login, service, action):
         case 'restart':
             return service_restart(login, service)
         case _:
-            log_write('ERROR', login=login, message='Wrong action')
+            log_write('ERROR', message='Wrong action', login=login)
             return code.HTTP_404_NOT_FOUND, {'ok': False, 'message': 'Wrong action'}
 
 
@@ -193,10 +188,8 @@ def service_restart(login, service):
             message = 'Starting failed'
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
             log_write('ERROR', message=message, login=login, action=action, service=service, status=status, error=error)
-                
-    response = dict(message=message, service=service, action=action, status=status)
 
-    return status_code, response
+    return status_code, dict(message=message, service=service, action=action, status=status)
 
 
 def systemctl_status(service, output=False, getstatus=False, sleep=0):
