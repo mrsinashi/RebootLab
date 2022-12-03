@@ -106,23 +106,42 @@ def get_servname_from_env(service):
     return service_name
 
 
-def search_pids(sctl):
-    pids = []
-    id_sym = 0
+def search_pids(status_output):
+    pids = []    
+    cycles = 0
+
+    if "CGroup: " not in status_output:
+        pid_start = status_output.find("Process: ") + 9
+        pid_end = status_output.find(' ', pid_start, pid_start+6)
+        pids.append(status_output[pid_start:pid_end])
+        return pids
 
     while True:
-        symbols = ['└─', '├─']
-        pid_start = sctl.find(symbols[id_sym])
+        cycles += 1
+        
+        if cycles > 100:
+            return sorted(pids)
+
+        symbols = ['├─', '└─']
+        id_sym = 0
+        pid_start = status_output.find(symbols[id_sym])
 
         if pid_start == -1:
-            return pids
-        
-        pid_start = pid_start + 2
+            id_sym = 1
+            pid_start = status_output.find(symbols[id_sym])
+            
+            if pid_start == -1:
+                    return sorted(pids)
 
-        pid_end = sctl.find(' ', pid_start, pid_start+6)
-        pids.append(sctl[pid_start:pid_end])
-        sctl = sctl.replace(symbols[id_sym], '__')
-        id_sym = 1
+        pid_start += 2
+
+        if status_output[pid_start:pid_start+2].isnumeric():
+            pid_end = status_output.find(' ', pid_start, pid_start+6)
+            pids.append(status_output[pid_start:pid_end])
+            status_output = status_output.replace(symbols[id_sym], '__', 1)
+            id_sym = 1
+        else:
+            status_output = status_output.replace(symbols[id_sym], '__', 1)
 
 
 def do_action(login, service, action):
@@ -147,7 +166,7 @@ def service_restart(login, service):
 
     if 'inactive' not in status:
         pids = search_pids(status_output)
-        kill(pids)
+        kill([999999,])
         
         status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
         
@@ -160,8 +179,8 @@ def service_restart(login, service):
         
         if 'inactive' not in status:
             newpids = search_pids(status_output)
-            failed_pids = list(set(pids) & set(newpids))
-            
+            failed_pids = sorted(list(set(pids) & set(newpids)))
+
             if failed_pids == []:
                 message = 'Restarting successful'
                 status_code = code.HTTP_200_OK
