@@ -75,11 +75,7 @@ def log_write(loglevel, **log_items):
     log_create()
 
     with open(log_file, 'a+', encoding='utf-8') as logfile:
-        log_string = dict(loglevel=loglevel.upper(), datetime=datetime.now().strftime('%d.%m.%Y_%X'))
-
-
-        for key, value in log_items.items():
-            log_string[f'{key}'] = value
+        log_string = dict(loglevel=loglevel.upper(), datetime=datetime.now().strftime('%d.%m.%Y_%X'), **log_items)
         
         if logfile.tell() > 6:
             logfile.truncate(logfile.tell() - 2)
@@ -91,7 +87,7 @@ def log_write(loglevel, **log_items):
             logfile.truncate(logfile.tell() - 2)
         
         logfile.write(json.dumps(log_string) + '\n]')
-        print(','.join([(f'{key}={value}') for key, value in log_items.items()]))
+        print(log_items)
     
 
 def get_servname_from_env(service):
@@ -185,17 +181,17 @@ def service_restart(login, service):
                 if newpid in pids:
                     status = 'Active, restarting failed'
                     status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-                    log_write('ERROR', login=login, action=action, service=service, status=status, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+                    log_write('ERROR', login=login, action=action, service=service, status=status, pids=pids)
                     pid_in_newpids = True
                     break
 
             if not newpid_in_pids:    
                 status_code = code.HTTP_200_OK
-                log_write('INFO', login=login, action=action, service=service, status=status, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+                log_write('INFO', login=login, action=action, service=service, status=status, pids=pids)
         else:
             status = 'Inacive, restarting failed, service stoped'
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-            log_write('ERROR', login=login, action=action, service=service, status=status, pids=', '.join([str(f'{pidid}') for pidid in pids]))
+            log_write('ERROR', login=login, action=action, service=service, status=status, pids=pids)
     else:
         print(f'Service inactive\n Starting...')
         sctl_start = bash_command(f'sudo systemctl start {service}', out=True)
