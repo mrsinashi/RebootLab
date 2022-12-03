@@ -129,7 +129,7 @@ def service_status(service):
     return code.HTTP_200_OK, dict(service=service, action='status', status=status)
 
 
-def service_restart(service):
+def service_restart2(service):
     sctl_status = bash_command(f"sudo systemctl status {service}", out=True)
 
     if "Active: active" in sctl_status:
@@ -217,5 +217,87 @@ def service_stop(service):
         log_write("INFO", status=status, action=action, service=service)
     
     response = dict(serice=service, action=action, status=status)
+
+    return status_code, response
+
+###////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////###
+#============================================================================================================================#
+###\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\###
+
+def search_pids():
+    pass
+
+def search_newpids():
+    pass
+
+Active = ''
+
+def kill():
+    pass
+
+def sctl_status():
+    pass
+
+def sctl_start():
+    pass
+
+
+def service_restart3(login, service):
+    sctl_status = bash_command(f'sudo systemctl status {service}', out=True)
+
+    if 'Active: active' in sctl_status:
+        pids = search_pids(sctl_status)
+        
+        for pid in pids:
+            bash_command(f"sudo kill {pid}")
+            print(f"PID {pid}: killing...")
+        
+        sctl_status = bash_command(f'sleep 1; sudo systemctl status {service}', out=True)
+        newpids = search_pids(sctl_status)
+
+        if 'Active: active' not in sctl_status:
+            bash_command(f'sudo systemctl start {service}', out=False)
+            sctl_status = bash_command(f'sleep 1; sudo systemctl status {service}', out=True)
+            action = 'kill, start'
+        else:
+            action = 'kill'
+        
+        if 'Active: active' in sctl_status:
+            newpid_in_pids = False
+
+            for newpid in newpids:
+                if newpid in pids:
+                    status = 'Active, restarting failed'
+                    status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
+                    log_write('ERROR', login=login, action=action, service=service, status=status, pids=pids)
+                    newpid_in_pids = True
+                    break
+            
+            print(f"[[[[{list(set(pids) & set(newpids))}]]]]")
+
+            if not newpid_in_pids:
+                status = 'Active, restarting successful'
+                status_code = code.HTTP_200_OK
+                log_write('INFO', login=login, action=action, service=service, status=status, pids=pids)
+        else:
+            status = 'Inacive, restarting failed, service stoped'
+            status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
+            log_write('ERROR', login=login, action=action, service=service, status=status, pids=pids)
+    else:
+        print(f'Service inactive\n Starting...')
+        sctl_start = bash_command(f'sudo systemctl start {service}', out=True)
+        action = 'start'
+    
+        if ' ' not in sctl_start:
+            status = 'Active, starting successful'
+            status_code = code.HTTP_200_OK
+            log_write('INFO', login=login, action=action, service=service, status=status)
+        else:
+            status = 'Inactive, starting failed'
+            status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
+            error = sctl_start.replace('\n', ' ')
+            log_write('ERROR', login=login, action=action, service=service, status=status, error=error)
+                
+    response = dict(service=service, action=action, status=status)
 
     return status_code, response
