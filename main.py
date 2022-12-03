@@ -166,7 +166,7 @@ def service_restart(login, service):
 
     if 'inactive' not in status:
         pids = search_pids(status_output)
-        kill([999999,])
+        kill(pids)
         
         status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
         
