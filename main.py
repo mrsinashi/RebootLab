@@ -23,7 +23,7 @@ class Request(BaseModel):
 
 @app.post("/", status_code=code.HTTP_200_OK)
 async def service(request: Request, response: Response):
-    login = auth_check(request.api_key)
+    login = check_auth(request.api_key)
 
     if login == -1:
         log_write('ERROR', message='Invalid API key')
@@ -39,17 +39,29 @@ async def service(request: Request, response: Response):
         
         return {'ok': False, 'message': 'Unknown service name'}
 
+    if not check_freq_of_requests():
+        return {'ok': False, 'message': 'Too many requests'}
+
     response.status_code, json_response = do_action(login, service, request.action)
 
     return json_response
 
 
-def auth_check(api_key):
+def check_auth(api_key):
     for login, apikey in api_keys.items():
         if apikey == api_key:
             return login
     
     return -1
+
+
+def check_freq_of_requests():
+    with open(log_file, 'r') as logfile:
+        log_json_data = json.loads(logfile.read())
+        if '03.12.2022' in log_json_data[0]["datetime"]:
+            return True
+    return False
+    
 
 
 def bash_command(command, output=False):
