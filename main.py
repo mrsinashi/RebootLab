@@ -5,11 +5,7 @@ import json
 import subprocess
 from datetime import datetime
 
-
-api_keys = dict(l2='+<9AkQNWb8_')
-log_file = "log.json"
-env_file = ".env"
-port = 9185
+from settings import *
 
 
 app = FastAPI()
@@ -31,15 +27,19 @@ async def service(request: Request, response: Response):
         
         return {'ok': False, 'message': 'Invalid API key'}
 
-    service = get_servname_from_env(request.service_name)
+    if request.service_name in services_list:
+        service = services_list[request.service_name]
 
     if service == -1:
-        log_write('ERROR', login=login, message='Unknown service name')
+        log_write('ERROR', message='Unknown service name', login=login)
         response.status_code = code.HTTP_404_NOT_FOUND
         
         return {'ok': False, 'message': 'Unknown service name'}
 
-    if not check_freq_of_requests():
+    if not check_freq_of_requests(login):
+        log_write('ERROR', message='Too many requests', login=login)
+        response.status_code = code.HTTP_200_OK
+
         return {'ok': False, 'message': 'Too many requests'}
 
     response.status_code, json_response = do_action(login, service, request.action)
@@ -55,13 +55,32 @@ def check_auth(api_key):
     return -1
 
 
-def check_freq_of_requests():
+def check_freq_of_requests(login):
+    date_today = datetime.now().strftime('%d.%m.%Y')
+    time_now = datetime.now().strftime('%X')
+    req_count = 0
+
     with open(log_file, 'r') as logfile:
         log_json_data = json.loads(logfile.read())
-        if '03.12.2022' in log_json_data[0]["datetime"]:
-            return True
+        
+        for log_string in log_json_data:
+            if 'action' in log_string and 'login' in log_string:
+                if (log_string['date'] == date_today
+                and log_string['action'] != 'status'
+                and log_string['login'] == login
+                and time_str_to_int(log_string['time']) > time_str_to_int(time_now) - time_limit * 60):
+                    req_count += 1
+
+    if req_count < requests_limit:
+        return True
+            
     return False
     
+
+def time_str_to_int(time_string):
+    time_string = time_string.split(':')
+
+    return int(time_string[0])*3600 + int(time_string[1])*60 + int(time_string[2])
 
 
 def bash_command(command, output=False):
@@ -86,7 +105,7 @@ def log_write(loglevel, **log_items):
     log_create()
 
     with open(log_file, 'a+', encoding='utf-8') as logfile:
-        log_string = dict(loglevel=loglevel.upper(), datetime=datetime.now().strftime('%d.%m.%Y_%X'), **log_items)
+        log_string = dict(loglevel=loglevel.upper(), date=datetime.now().strftime('%d.%m.%Y'), time=datetime.now().strftime('%X'), **log_items)
         
         if logfile.tell() > 6:
             logfile.truncate(logfile.tell() - 2)
@@ -99,26 +118,9 @@ def log_write(loglevel, **log_items):
         
         logfile.write(json.dumps(log_string) + '\n]')
         print(log_items)
-    
-
-def get_servname_from_env(service):
-    if not os.path.isfile(env_file):
-        return -1
-    
-    envfile = open(env_file, 'r')
-    services_dict = envfile.readlines()
-
-    service_name = -1
-
-    for env_string in services_dict:
-        if service + "=" in env_string:
-            service_name = env_string[env_string.find('=') + 1:env_string.find('#')].strip(' #\n')
-            print(service_name)
-    
-    return service_name
 
 
-def search_pids(status_output):
+def parse_pids(status_output):
     pids = []    
     cycles = 0
 
@@ -177,7 +179,7 @@ def service_restart(login, service):
     status_output, status = systemctl_status(service, output=True, getstatus=True)
 
     if 'inactive' not in status:
-        pids = search_pids(status_output)
+        pids = parse_pids(status_output)
         kill(pids)
         
         status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
@@ -190,7 +192,7 @@ def service_restart(login, service):
             action = 'kill'
         
         if 'inactive' not in status:
-            newpids = search_pids(status_output)
+            newpids = parse_pids(status_output)
             failed_pids = sorted(list(set(pids) & set(newpids)))
 
             if failed_pids == []:
