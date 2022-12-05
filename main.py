@@ -21,7 +21,7 @@ class Request(BaseModel):
 async def service(request: Request, response: Response):
     login = check_auth(request.api_key)
 
-    if login == -1:
+    if login == False:
         log_write('ERROR', message='Invalid API key')
         response.status_code = code.HTTP_401_UNAUTHORIZED
         
@@ -36,7 +36,7 @@ async def service(request: Request, response: Response):
         
         return {'ok': False, 'message': 'Unknown service name'}
 
-    if not check_freq_of_requests(login):
+    if not check_freq_of_requests(service):
         log_write('ERROR', message='Too many requests', login=login)
         response.status_code = code.HTTP_200_OK
 
@@ -52,10 +52,10 @@ def check_auth(api_key):
         if apikey == api_key:
             return login
     
-    return -1
+    return False
 
 
-def check_freq_of_requests(login):
+def check_freq_of_requests(service):
     date_today = datetime.now().strftime('%d.%m.%Y')
     time_now = datetime.now().strftime('%X')
     req_count = 0
@@ -64,14 +64,14 @@ def check_freq_of_requests(login):
         log_json_data = json.loads(logfile.read())
         
         for log_string in log_json_data:
-            if 'action' in log_string and 'login' in log_string:
+            if 'action' in log_string and 'service' in log_string:
                 if (log_string['date'] == date_today
                 and log_string['action'] != 'status'
-                and log_string['login'] == login
-                and time_str_to_int(log_string['time']) > time_str_to_int(time_now) - time_limit * 60):
+                and log_string['service'] == service
+                and time_str_to_int(log_string['time']) > time_str_to_int(time_now) - min_time_for_requests * 60):
                     req_count += 1
 
-    if req_count < requests_limit:
+    if req_count < max_requests_in_time:
         return True
             
     return False
@@ -208,7 +208,6 @@ def service_restart(login, service):
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
             log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids, error=error)
     else:
-        print(f'Service inactive. Starting...')
         error = systemctl_start(service, output=True)
         status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
         action = 'start'
@@ -251,5 +250,5 @@ def systemctl_start(service, output=False):
 
 def kill(pids):
     for pid in pids:
-        bash_command(f'sudo kill {pid}')
+        bash_command(f'sudo kill -9 {pid}')
         print(f"PID {pid}: killing...")

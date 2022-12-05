@@ -5,7 +5,7 @@ api_keys = dict(
 )
 
 services_list = dict(
-    name='name-server.service'
+    "service_from_"='name-server.service'
 )
 
 time_limit = 15
