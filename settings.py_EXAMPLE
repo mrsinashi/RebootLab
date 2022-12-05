@@ -1,12 +1,13 @@
 log_file = "log.json"
 
 api_keys = dict(
-    user='1234567890'
+    "user"="api_key"
 )
 
 services_list = dict(
-    "service_from_"='name-server.service'
+    "service_in_request": "service_in_system"
 )
 
-time_limit = 15
-requests_limit = 3
+min_time_for_requests = 15
+max_requests_in_time = 3
+max_logs_storage_day = 10
