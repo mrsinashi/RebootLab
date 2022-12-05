@@ -156,8 +156,7 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-.env
-log.json*
+log.json
 RebootLab/
 settings.py
 # PyCharm
