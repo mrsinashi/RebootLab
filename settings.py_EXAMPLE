@@ -1,0 +1,12 @@
+log_file = "log.json"
+
+api_keys = dict(
+    user='1234567890'
+)
+
+services_list = dict(
+    name='name-server.service'
+)
+
+time_limit = 15
+requests_limit = 3
