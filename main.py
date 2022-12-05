@@ -181,7 +181,7 @@ def do_action(login, service, action):
 def service_status(service):
     status = systemctl_status(service, getstatus=True)
 
-    return code.HTTP_200_OK, dict(service=service, action='status', status=status)
+    return code.HTTP_200_OK, {'service': service, 'action': 'status', 'status': status}
 
 
 def service_restart(login, service):
@@ -230,7 +230,7 @@ def service_restart(login, service):
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
             log_write('ERROR', message=message, login=login, action=action, service=service, status=status, error=error)
 
-    return status_code, dict(message=message, service=service, action=action, status=status)
+    return status_code, {'message': message, 'service': service, 'action': action, 'status': status}
 
 
 def systemctl_status(service, output=False, getstatus=False, sleep=0):

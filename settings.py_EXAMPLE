@@ -1,12 +1,12 @@
 log_file = "log.json"
 
-api_keys = dict(
-    "user"="api_key"
-)
+api_keys = {
+    "user": "api_key"
+}
 
-services_list = dict(
+services_list = {
     "service_in_request": "service_in_system"
-)
+}
 
 min_time_for_requests = 15
 max_requests_in_time = 3
