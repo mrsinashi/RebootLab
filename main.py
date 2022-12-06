@@ -27,7 +27,7 @@ async def service(request_data: Request_Data, response: Response, api_request: R
         
         return {'ok': False, 'message': 'Host not allowed'}
     
-    if login == False:
+    if login is None:
         log_write('ERROR', message='Invalid API key')
         response.status_code = code.HTTP_401_UNAUTHORIZED
         
@@ -53,7 +53,7 @@ async def service(request_data: Request_Data, response: Response, api_request: R
 
 
 def check_auth(key):
-    return api_keys.get(key, False)
+    return api_keys.get(key)
 
 
 def check_limit_of_requests(service):
