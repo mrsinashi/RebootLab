@@ -5,11 +5,11 @@ allowed_hosts = [
 ]
 
 api_keys = {
-    "user": "api_key"
+    'api_key': 'login'
 }
 
 services_list = {
-    "service_from_request": "service_in_system"
+    'service_from_request': 'service_in_system'
 }
 
 min_time_for_requests = 15
