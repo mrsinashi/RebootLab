@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import FastAPI, Response, status as code
+from fastapi import FastAPI, Response, Request, status as code
 import json
 from os.path import exists, isfile
 from os import mkdir
@@ -11,24 +11,30 @@ from settings import *
 
 app = FastAPI()
 
-class Request(BaseModel):
+class Request_Data(BaseModel):
     service_name: str
     action: str
     api_key: str
 
 
-@app.post("/", status_code=code.HTTP_200_OK)
-async def service(request: Request, response: Response):
-    login = check_auth(request.api_key)
-
+@app.post('/', status_code=code.HTTP_200_OK)
+async def service(request_data: Request_Data, response: Response, api_request: Request):
+    login = check_auth(request_data.api_key)
+    
+    if api_request.client.host not in allowed_hosts:
+        log_write('ERROR', message='Host not allowed')
+        response.status_code = code.HTTP_403_FORBIDDEN
+        
+        return {'ok': False, 'message': 'Host not allowed'}
+    
     if login == False:
         log_write('ERROR', message='Invalid API key')
         response.status_code = code.HTTP_401_UNAUTHORIZED
         
         return {'ok': False, 'message': 'Invalid API key'}
 
-    if request.service_name in services_list:
-        service = services_list[request.service_name]
+    if request_data.service_name in services_list:
+        service = services_list[request_data.service_name]
     else:
         log_write('ERROR', message='Unknown service name', login=login)
         response.status_code = code.HTTP_404_NOT_FOUND
@@ -41,24 +47,19 @@ async def service(request: Request, response: Response):
 
         return {'ok': False, 'message': 'Too many requests'}
 
-    response.status_code, json_response = do_action(login, service, request.action)
+    response.status_code, json_response = do_action(login, service, request_data.action)
 
     return json_response
 
 
-def check_auth(api_key):
-    for login, apikey in api_keys.items():
-        if apikey == api_key:
-            return login
-    
-    return False
+def check_auth(key):
+    return api_keys.get(key, False)
 
 
 def check_limit_of_requests(service):
     date_today = datetime.now().strftime('%d.%m.%Y')
     time_now = datetime.now().strftime('%X')
     req_count = 0
-
     log_file = create_log_file()
 
     with open(log_file, 'r') as logfile:
@@ -102,7 +103,7 @@ def create_log_file():
     
     if not isfile(current_log_file):
         logfile = open(current_log_file, 'x', encoding='utf-8')
-        logfile.write('[\n  \n]')
+        logfile.write('[]')
         logfile.close()
 
     if isfile(current_log_file):
@@ -145,9 +146,9 @@ def parse_pids(status_output):
     pids = []    
     cycles = 0
 
-    if "CGroup: " not in status_output:
-        pid_start = status_output.find("Process: ") + 9
-        pid_end = status_output.find(' ', pid_start, pid_start+6)
+    if 'CGroup: ' not in status_output:
+        pid_start = status_output.find('Process: ') + 9
+        pid_end = status_output.find(' ', pid_start, pid_start + 6)
         pids.append(status_output[pid_start:pid_end])
         return pids
 
