@@ -1,10 +1,10 @@
+from datetime import datetime
 from fastapi import FastAPI, Response, status as code
-from pydantic import BaseModel
+import json
 from os.path import exists, isfile
 from os import mkdir
-import json
+from pydantic import BaseModel
 from subprocess import Popen, STDOUT, PIPE
-from datetime import datetime
 
 from settings import *
 
