@@ -1,4 +1,4 @@
-log_file = "log.json"
+log_dir = "logs/"
 
 api_keys = {
     "user": "api_key"

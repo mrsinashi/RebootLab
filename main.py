@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Response, status as code
 from pydantic import BaseModel
-import os.path
+from os.path import exists, isfile
+from os import mkdir
 import json
-import subprocess
+from subprocess import Popen, STDOUT, PIPE
 from datetime import datetime
 
 from settings import *
@@ -28,14 +29,13 @@ async def service(request: Request, response: Response):
 
     if request.service_name in services_list:
         service = services_list[request.service_name]
-
-    if service == -1:
+    else:
         log_write('ERROR', message='Unknown service name', login=login)
         response.status_code = code.HTTP_404_NOT_FOUND
         
         return {'ok': False, 'message': 'Unknown service name'}
 
-    if not check_freq_of_requests(service):
+    if not check_limit_of_requests(service):
         log_write('ERROR', message='Too many requests', login=login)
         response.status_code = code.HTTP_200_OK
 
@@ -54,10 +54,12 @@ def check_auth(api_key):
     return False
 
 
-def check_freq_of_requests(service):
+def check_limit_of_requests(service):
     date_today = datetime.now().strftime('%d.%m.%Y')
     time_now = datetime.now().strftime('%X')
     req_count = 0
+
+    log_file = create_log_file()
 
     with open(log_file, 'r') as logfile:
         log_json_data = json.loads(logfile.read())
@@ -79,11 +81,11 @@ def check_freq_of_requests(service):
 def time_str_to_int(time_string):
     time_string = time_string.split(':')
 
-    return int(time_string[0])*3600 + int(time_string[1])*60 + int(time_string[2])
+    return int(time_string[0]) * 3600 + int(time_string[1]) * 60 + int(time_string[2])
 
 
 def bash_command(command, output=False):
-    cmd = subprocess.Popen(command, shell=True, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    cmd = Popen(command, shell=True, stderr=STDOUT, stdout=PIPE)
     
     if output:
         return cmd.communicate(timeout=10)[0].decode('utf-8')
@@ -91,25 +93,33 @@ def bash_command(command, output=False):
     return cmd
 
 
-def log_create():
-    if os.path.isfile(log_file):
-        return
-    else:   
-        logfile = open(log_file, 'x', encoding='utf-8')
-        logfile.write("[\n  \n]")
+def create_log_file():
+    date_today = datetime.now().strftime('%d.%m.%Y')
+    current_log_file = f'{log_dir}/logfile_{date_today}.json'
+
+    if not exists(log_dir):
+        mkdir(log_dir)
+    
+    if not isfile(current_log_file):
+        logfile = open(current_log_file, 'x', encoding='utf-8')
+        logfile.write('[\n  \n]')
         logfile.close()
+
+    if isfile(current_log_file):
+        return current_log_file
+    
+    return False
 
 
 def log_remove_old_entries(log_json_data):
     date_today = datetime.now()
-    log_json_data = log_json_data
     new_log_json_data = []
 
     for log_string in log_json_data:
         if 'date' in log_string:
             log_string_date = datetime.strptime(log_string['date'], '%d.%m.%Y')
             difference_in_days = date_today - log_string_date
-            
+
             if difference_in_days.days <= max_logs_storage_day:
                 new_log_json_data.append(log_string)
     
@@ -117,11 +127,16 @@ def log_remove_old_entries(log_json_data):
 
 
 def log_write(loglevel, **log_items):
-    log_create()
+    log_file = create_log_file()
+
+    if log_file == False:
+        print(f'Error: logfile not be created')
+        return False
     
     log_json_data = json.load(open(log_file, 'r', encoding='utf-8'))
     log_json_data = log_remove_old_entries(log_json_data)
-    log_string = dict(loglevel=loglevel.upper(), date=datetime.now().strftime('%d.%m.%Y'), time=datetime.now().strftime('%X'), **log_items)
+    log_string = dict(loglevel=loglevel.upper(), date=datetime.now().strftime('%d.%m.%Y'),
+                      time=datetime.now().strftime('%X'), **log_items)
     log_json_data.append(log_string)
     json.dump(log_json_data, open(log_file, 'w', encoding='utf-8'), indent=2)
 
@@ -155,8 +170,8 @@ def parse_pids(status_output):
 
         pid_start += 2
 
-        if status_output[pid_start:pid_start+2].isnumeric():
-            pid_end = status_output.find(' ', pid_start, pid_start+6)
+        if status_output[pid_start:pid_start + 2].isnumeric():
+            pid_end = status_output.find(' ', pid_start, pid_start + 6)
             pids.append(status_output[pid_start:pid_end])
             status_output = status_output.replace(symbols[id_sym], '__', 1)
             id_sym = 1
@@ -208,11 +223,13 @@ def service_restart(login, service):
             else:
                 message = 'Restarting failed'
                 status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-                log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids, failed_pids=failed_pids)
+                log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids,
+                          failed_pids=failed_pids)
         else:
             message = 'Restarting failed, service stoped'
             status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-            log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids, error=error)
+            log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids,
+                      error=error)
     else:
         error = systemctl_start(service, output=True)
         status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
