@@ -18,18 +18,18 @@ class Request_Data(BaseModel):
 
 
 @app.post('/', status_code=code.HTTP_200_OK)
-async def service(request_data: Request_Data, response: Response, api_request: Request):
+async def service(request_data: Request_Data, api_response: Response, api_request: Request):
     login = check_auth(request_data.api_key)
     
     if api_request.client.host not in allowed_hosts:
         log_write('ERROR', message='Host not allowed')
-        response.status_code = code.HTTP_403_FORBIDDEN
+        api_response.status_code = code.HTTP_403_FORBIDDEN
         
         return {'ok': False, 'message': 'Host not allowed'}
     
     if login is None:
         log_write('ERROR', message='Invalid API key')
-        response.status_code = code.HTTP_401_UNAUTHORIZED
+        api_response.status_code = code.HTTP_401_UNAUTHORIZED
         
         return {'ok': False, 'message': 'Invalid API key'}
 
@@ -37,17 +37,17 @@ async def service(request_data: Request_Data, response: Response, api_request: R
         service = services_list[request_data.service_name]
     else:
         log_write('ERROR', message='Unknown service name', login=login)
-        response.status_code = code.HTTP_404_NOT_FOUND
+        api_response.status_code = code.HTTP_404_NOT_FOUND
         
         return {'ok': False, 'message': 'Unknown service name'}
 
     if not check_limit_of_requests(service):
         log_write('ERROR', message='Too many requests', login=login)
-        response.status_code = code.HTTP_200_OK
+        api_response.status_code = code.HTTP_200_OK
 
         return {'ok': False, 'message': 'Too many requests'}
 
-    response.status_code, json_response = do_action(login, service, request_data.action)
+    api_response.status_code, json_response = do_action(login, service, request_data.action)
 
     return json_response
 
