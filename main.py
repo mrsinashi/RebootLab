@@ -10,7 +10,6 @@ from settings import *
 
 app = FastAPI()
 
-
 class Request(BaseModel):
     service_name: str
     action: str
@@ -58,7 +57,6 @@ def check_auth(api_key):
 def check_freq_of_requests(service):
     date_today = datetime.now().strftime('%d.%m.%Y')
     time_now = datetime.now().strftime('%X')
-    print(f"Time now: {time_now}")
     req_count = 0
 
     with open(log_file, 'r') as logfile:
@@ -102,8 +100,7 @@ def log_create():
         logfile.close()
 
 
-def log_truncate(log_json_data):
-    max_logs_storage_day = 10
+def log_remove_old_entries(log_json_data):
     date_today = datetime.now()
     log_json_data = log_json_data
     new_log_json_data = []
@@ -111,8 +108,8 @@ def log_truncate(log_json_data):
     for log_string in log_json_data:
         if 'date' in log_string:
             log_string_date = datetime.strptime(log_string['date'], '%d.%m.%Y')
-            print(log_string['date'])
             difference_in_days = date_today - log_string_date
+            
             if difference_in_days.days <= max_logs_storage_day:
                 new_log_json_data.append(log_string)
     
@@ -123,7 +120,7 @@ def log_write(loglevel, **log_items):
     log_create()
     
     log_json_data = json.load(open(log_file, 'r', encoding='utf-8'))
-    log_json_data = log_truncate(log_json_data)
+    log_json_data = log_remove_old_entries(log_json_data)
     log_string = dict(loglevel=loglevel.upper(), date=datetime.now().strftime('%d.%m.%Y'), time=datetime.now().strftime('%X'), **log_items)
     log_json_data.append(log_string)
     json.dump(log_json_data, open(log_file, 'w', encoding='utf-8'), indent=2)
@@ -189,7 +186,7 @@ def service_restart(login, service):
 
     if 'inactive' not in status:
         pids = parse_pids(status_output)
-        kill([9999999])
+        kill(pids)
         
         status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
         
@@ -260,4 +257,3 @@ def systemctl_start(service, output=False):
 def kill(pids):
     for pid in pids:
         bash_command(f'sudo kill -9 {pid}')
-        print(f"PID {pid}: killing...")

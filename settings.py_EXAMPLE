@@ -5,7 +5,7 @@ api_keys = {
 }
 
 services_list = {
-    "service_in_request": "service_in_system"
+    "service_from_request": "service_in_system"
 }
 
 min_time_for_requests = 15
