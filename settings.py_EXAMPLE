@@ -12,6 +12,10 @@ services_list = {
     'service_from_request': 'service_in_system'
 }
 
+service_ports_list = {
+    'service_from_request': 'service_port'
+}
+
 min_time_for_requests = 15
 max_requests_in_time = 3
 max_logs_storage_day = 10
