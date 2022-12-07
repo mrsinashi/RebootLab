@@ -102,29 +102,13 @@ def create_log_file():
         mkdir(log_dir)
     
     if not isfile(current_log_file):
-        logfile = open(current_log_file, 'x', encoding='utf-8')
-        logfile.write('[]')
-        logfile.close()
+        with open(current_log_file, 'x', encoding='utf-8') as logfile:
+            logfile.write('[]')
 
     if isfile(current_log_file):
         return current_log_file
     
     return False
-
-
-def log_remove_old_entries(log_json_data):
-    date_today = datetime.now()
-    new_log_json_data = []
-
-    for log_string in log_json_data:
-        if 'date' in log_string:
-            log_string_date = datetime.strptime(log_string['date'], '%d.%m.%Y')
-            difference_in_days = date_today - log_string_date
-
-            if difference_in_days.days <= max_logs_storage_day:
-                new_log_json_data.append(log_string)
-    
-    return new_log_json_data
 
 
 def log_write(loglevel, **log_items):
@@ -135,7 +119,6 @@ def log_write(loglevel, **log_items):
         return False
     
     log_json_data = json.load(open(log_file, 'r', encoding='utf-8'))
-    log_json_data = log_remove_old_entries(log_json_data)
     log_string = dict(loglevel=loglevel.upper(), date=datetime.now().strftime('%d.%m.%Y'),
                       time=datetime.now().strftime('%X'), **log_items)
     log_json_data.append(log_string)
