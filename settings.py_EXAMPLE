@@ -13,7 +13,7 @@ services_list = {
 }
 
 service_ports_list = {
-    'service_from_request': 'service_port'
+    'service_in_system': service_port
 }
 
 min_time_for_requests = 15

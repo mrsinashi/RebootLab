@@ -125,42 +125,11 @@ def log_write(loglevel, **log_items):
     json.dump(log_json_data, open(log_file, 'w', encoding='utf-8'), indent=2)
 
 
-def parse_pids(status_output):
-    pids = []    
-    cycles = 0
+def parse_pids(output_to_parse):
+    parsed_data = output_to_parse.split()
+    parsed_data.pop(0)
 
-    if 'CGroup: ' not in status_output:
-        pid_start = status_output.find('Process: ') + 9
-        pid_end = status_output.find(' ', pid_start, pid_start + 6)
-        pids.append(status_output[pid_start:pid_end])
-        return pids
-
-    while True:
-        cycles += 1
-        
-        if cycles > 100:
-            return sorted(pids)
-
-        symbols = ['├─', '└─']
-        id_sym = 0
-        pid_start = status_output.find(symbols[id_sym])
-
-        if pid_start == -1:
-            id_sym = 1
-            pid_start = status_output.find(symbols[id_sym])
-            
-            if pid_start == -1:
-                    return sorted(pids)
-
-        pid_start += 2
-
-        if status_output[pid_start:pid_start + 2].isnumeric():
-            pid_end = status_output.find(' ', pid_start, pid_start + 6)
-            pids.append(status_output[pid_start:pid_end])
-            status_output = status_output.replace(symbols[id_sym], '__', 1)
-            id_sym = 1
-        else:
-            status_output = status_output.replace(symbols[id_sym], '__', 1)
+    return parsed_data
 
 
 def do_action(login, service, action):
@@ -181,23 +150,25 @@ def service_status(service):
 
 
 def service_restart(login, service):
-    status_output, status = systemctl_status(service, output=True, getstatus=True)
+    status = systemctl_status(service, getstatus=True)
 
     if 'inactive' not in status:
-        pids = parse_pids(status_output)
+        port = service_ports_list.get(service)
+        pids = parse_pids(fuser(port))
+        
         kill(pids)
         
-        status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
+        status = systemctl_status(service, getstatus=True, sleep=1)
         
         if 'inactive' in status:
             error = systemctl_start(service, output=True)
-            status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
+            status = systemctl_status(service, getstatus=True, sleep=1)
             action = 'kill, start'
         else:
             action = 'kill'
         
         if 'inactive' not in status:
-            newpids = parse_pids(status_output)
+            newpids = parse_pids(fuser(port))
             failed_pids = sorted(list(set(pids) & set(newpids)))
 
             if failed_pids == []:
@@ -216,7 +187,7 @@ def service_restart(login, service):
                       error=error)
     else:
         error = systemctl_start(service, output=True)
-        status_output, status = systemctl_status(service, output=True, getstatus=True, sleep=1)
+        status = systemctl_status(service, getstatus=True, sleep=1)
         action = 'start'
     
         if 'inactive' not in status:
@@ -258,3 +229,6 @@ def systemctl_start(service, output=False):
 def kill(pids):
     for pid in pids:
         bash_command(f'sudo kill -9 {pid}')
+
+def fuser(port):
+    return bash_command(f'sudo fuser {port}/tcp', output=True)
