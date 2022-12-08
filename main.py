@@ -126,10 +126,7 @@ def log_write(loglevel, **log_items):
 
 
 def parse_pids(output_to_parse):
-    parsed_data = output_to_parse.split().pop(0)
-
-    return parsed_data
-
+    return output_to_parse.split()[1:]
 
 def do_action(login, service, action):
     match action:
