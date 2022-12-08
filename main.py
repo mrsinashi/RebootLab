@@ -199,7 +199,7 @@ def service_restart(login, service):
 
 
 def systemctl_status(service, output=False, getstatus=False, sleep=0):
-    status_output = bash_command(f'sleep {sleep}; sudo systemctl status {service}', output=True)
+    status_output = bash_command(f'sleep {sleep}; systemctl status {service}', output=True)
     
     output_data = []
 
@@ -216,7 +216,7 @@ def systemctl_status(service, output=False, getstatus=False, sleep=0):
 
 
 def systemctl_start(service, output=False):
-    start_output = bash_command(f'sudo systemctl start {service}', output=output)
+    start_output = bash_command(f'systemctl start {service}', output=output)
 
     if output:
         return start_output.replace('\n', ' ').strip()
@@ -224,7 +224,7 @@ def systemctl_start(service, output=False):
 
 def kill(pids):
     for pid in pids:
-        bash_command(f'sudo kill -9 {pid}')
+        bash_command(f'kill -9 {pid}')
 
 def fuser(port):
-    return bash_command(f'sudo fuser {port}/tcp', output=True)
+    return bash_command(f'fuser {port}/tcp', output=True)
