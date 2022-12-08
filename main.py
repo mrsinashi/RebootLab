@@ -53,7 +53,7 @@ async def service(request_data: Request_Data, api_response: Response, api_reques
 
 
 def check_auth(key):
-    return api_keys.get(key)
+    return api_logins.get(key)
 
 
 def check_limit_of_requests(service):
@@ -114,7 +114,7 @@ def create_log_file():
 def log_write(loglevel, **log_items):
     log_file = create_log_file()
 
-    if log_file == False:
+    if not log_file:
         print(f'Error: logfile not be created')
         return False
     
@@ -171,7 +171,7 @@ def service_restart(login, service):
             newpids = parse_pids(fuser(port))
             failed_pids = sorted(list(set(pids) & set(newpids)))
 
-            if failed_pids == []:
+            if not failed_pids:
                 message = 'Restarting successful'
                 status_code = code.HTTP_200_OK
                 log_write('INFO', message=message, login=login, action=action, service=service, status=status, pids=pids)
