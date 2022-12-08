@@ -19,14 +19,14 @@ class Request_Data(BaseModel):
 
 @app.post('/', status_code=code.HTTP_200_OK)
 async def service(request_data: Request_Data, api_response: Response, api_request: Request):
-    login = check_auth(request_data.api_key)
-    
     if api_request.client.host not in allowed_hosts:
         log_write('ERROR', message='Host not allowed')
         api_response.status_code = code.HTTP_403_FORBIDDEN
         
         return {'ok': False, 'message': 'Host not allowed'}
     
+    login = check_auth(request_data.api_key)
+
     if login is None:
         log_write('ERROR', message='Invalid API key')
         api_response.status_code = code.HTTP_401_UNAUTHORIZED
@@ -126,8 +126,7 @@ def log_write(loglevel, **log_items):
 
 
 def parse_pids(output_to_parse):
-    parsed_data = output_to_parse.split()
-    parsed_data.pop(0)
+    parsed_data = output_to_parse.split().pop(0)
 
     return parsed_data
 
