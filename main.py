@@ -118,14 +118,17 @@ def log_write(loglevel, **log_items):
 
 
 def do_action(login, service, action):
-    match action:
-        case 'status':
-            return service_status(service)
-        case 'restart':
-            return service_restart(login, service)
-        case _:
-            log_write('ERROR', message='Wrong action', login=login)
-            return code.HTTP_404_NOT_FOUND, {'ok': False, 'message': 'Wrong action'}
+    if action == 'status':
+        response = service_status(service)
+        status_code = code.HTTP_200_OK
+    elif action == 'restart':
+        response = service_restart(login, service)
+        status_code = code.HTTP_200_OK
+    else:
+        status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
+        log_write('ERROR', message='Wrong action', login=login)
+    
+    return status_code, response
 
 
 def service_restart(login, service):
@@ -139,8 +142,9 @@ def service_restart(login, service):
 
 
 def service_status(service, sleep=0):
-    status_output = bash_command(f'sleep {sleep}; systemctl status {service}', output=True)
-    status_start = status_output.find('Active: ') + 8
-    status_end = status_output.find(')', status_start) + 1
+    running = bash_command(f'sleep {sleep}; systemctl status {service}', output=True).find('(running)')
     
-    return status_output[status_start:status_end]
+    if running != -1:
+        return 'active'
+    else:
+        return 'inactive'
