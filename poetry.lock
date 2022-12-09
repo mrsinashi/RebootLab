@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "rebootlab"
+version = "0.1.0"
+description = ""
+authors = ["mrsinashi <ignatiusferum@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = {extras = ["all"], version = "^0.88.0"}
+pydantic = "^1.10.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

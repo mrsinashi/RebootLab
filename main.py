@@ -47,7 +47,9 @@ async def service(request_data: Request_Data, api_response: Response, api_reques
 
         return {'ok': False, 'message': 'Too many requests'}
 
-    return do_action(login, service, request_data.action)
+    api_response.status_code, response = do_action(login, service, request_data.action)
+
+    return response
 
 
 def check_limit_of_requests(service):
