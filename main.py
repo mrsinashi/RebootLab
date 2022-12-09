@@ -85,8 +85,6 @@ def bash_command(command, output=False):
     if output:
         return cmd.communicate(timeout=10)[0].decode('utf-8')
 
-    return cmd
-
 
 def create_log_file():
     date_today = datetime.now().strftime('%d.%m.%Y')
