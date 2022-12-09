@@ -145,6 +145,6 @@ def service_status(service, sleep=0):
     running = bash_command(f'sleep {sleep}; systemctl status {service}', output=True).find('(running)')
     
     if running != -1:
-        return 'active'
+        return True
     else:
-        return 'inactive'
+        return False
