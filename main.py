@@ -125,9 +125,6 @@ def log_write(loglevel, **log_items):
     json.dump(log_json_data, open(log_file, 'w', encoding='utf-8'), indent=2)
 
 
-def parse_pids(output_to_parse):
-    return output_to_parse.split()[1:]
-
 def do_action(login, service, action):
     match action:
         case 'status':
@@ -150,52 +147,30 @@ def service_restart(login, service):
 
     if 'inactive' not in status:
         port = service_ports_list.get(service)
-        pids = parse_pids(fuser(port))
-        
-        kill(pids)
-        
+        kill(port)
+        systemctl_restart(service)
         status = systemctl_status(service, getstatus=True, sleep=1)
-        
-        if 'inactive' in status:
-            error = systemctl_start(service, output=True)
-            status = systemctl_status(service, getstatus=True, sleep=1)
-            action = 'kill, start'
-        else:
-            action = 'kill'
-        
+    
         if 'inactive' not in status:
-            newpids = parse_pids(fuser(port))
-            failed_pids = sorted(list(set(pids) & set(newpids)))
-
-            if not failed_pids:
-                message = 'Restarting successful'
-                status_code = code.HTTP_200_OK
-                log_write('INFO', message=message, login=login, action=action, service=service, status=status, pids=pids)
-            else:
-                message = 'Restarting failed'
-                status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-                log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids,
-                          failed_pids=failed_pids)
+            log_write('INFO', message='Starting successful', login=login, action='kill, restart', service=service, status=status)
+            return code.HTTP_200_OK, {'message': 'Restarting successful', 'service': service, 'action': 'kill, restart',
+                                      'status': status}
         else:
-            message = 'Restarting failed, service stoped'
-            status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-            log_write('ERROR', message=message, login=login, action=action, service=service, status=status, pids=pids,
-                      error=error)
+            log_write('ERROR', message='Restarting failed, service stoped', login=login, action='kill, restart', service=service,
+                      status=status)
+            return code.HTTP_500_INTERNAL_SERVER_ERROR, {'message': 'Restarting failed, service stoped', 'service': service,
+                                                         'action': 'kill, restart', 'status': status}
     else:
         error = systemctl_start(service, output=True)
         status = systemctl_status(service, getstatus=True, sleep=1)
-        action = 'start'
     
         if 'inactive' not in status:
-            message = 'Starting successful'
-            status_code = code.HTTP_200_OK
-            log_write('INFO', message=message, login=login, action=action, service=service, status=status)
+            log_write('INFO', message='Starting successful', login=login, action='start', service=service, status=status)
+            return code.HTTP_200_OK, {'message': 'Starting successful', 'service': service, 'action': 'start', 'status': status}
         else:
-            message = 'Starting failed'
-            status_code = code.HTTP_500_INTERNAL_SERVER_ERROR
-            log_write('ERROR', message=message, login=login, action=action, service=service, status=status, error=error)
-
-    return status_code, {'message': message, 'service': service, 'action': action, 'status': status}
+            log_write('ERROR', message='Starting failed', login=login, action='start', service=service, status=status, error=error)
+            return code.HTTP_500_INTERNAL_SERVER_ERROR, {'message': 'Starting failed', 'service': service, 'action': 'start',
+                                                         'status': status}
 
 
 def systemctl_status(service, output=False, getstatus=False, sleep=0):
@@ -216,15 +191,18 @@ def systemctl_status(service, output=False, getstatus=False, sleep=0):
 
 
 def systemctl_start(service, output=False):
-    start_output = bash_command(f'systemctl start {service}', output=output)
+    start_output = bash_command(f'sudo systemctl start {service}', output=output)
 
     if output:
         return start_output.replace('\n', ' ').strip()
 
 
-def kill(pids):
-    for pid in pids:
-        bash_command(f'kill -9 {pid}')
+def systemctl_restart(service, output=False):
+    start_output = bash_command(f'sudo systemctl restart {service}', output=output)
 
-def fuser(port):
-    return bash_command(f'fuser {port}/tcp', output=True)
+    if output:
+        return start_output.replace('\n', ' ').strip()
+
+
+def kill(port):
+    bash_command(f'sudo kill -9 $(sudo lsof -ti tcp:{port})')
