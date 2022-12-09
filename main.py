@@ -25,7 +25,7 @@ async def service(request_data: Request_Data, api_response: Response, api_reques
         
         return {'ok': False, 'message': 'Host not allowed'}
     
-    login = check_auth(request_data.api_key)
+    login = api_logins.get(request_data.api_key)
 
     if login is None:
         log_write('ERROR', message='Invalid API key')
@@ -47,13 +47,9 @@ async def service(request_data: Request_Data, api_response: Response, api_reques
 
         return {'ok': False, 'message': 'Too many requests'}
 
-    api_response.status_code, json_response = do_action(login, service, request_data.action)
+    json_response = do_action(login, service, request_data.action)
 
     return json_response
-
-
-def check_auth(key):
-    return api_logins.get(key)
 
 
 def check_limit_of_requests(service):
@@ -136,73 +132,19 @@ def do_action(login, service, action):
             return code.HTTP_404_NOT_FOUND, {'ok': False, 'message': 'Wrong action'}
 
 
-def service_status(service):
-    status = systemctl_status(service, getstatus=True)
-
-    return code.HTTP_200_OK, {'service': service, 'action': 'status', 'status': status}
-
-
 def service_restart(login, service):
-    status = systemctl_status(service, getstatus=True)
-
-    if 'inactive' not in status:
-        port = service_ports_list.get(service)
-        kill(port)
-        systemctl_restart(service)
-        status = systemctl_status(service, getstatus=True, sleep=1)
+    port = service_ports_list.get(service)
+    bash_command(f'kill -9 $(lsof -ti tcp:{port})')
+    bash_command(f'systemctl restart {service}')
+    status = service_status(service, sleep=1)
+    log_write('INFO', message='Restarting successful', login=login, action='kill, restart', service=service, status=status)
     
-        if 'inactive' not in status:
-            log_write('INFO', message='Starting successful', login=login, action='kill, restart', service=service, status=status)
-            return code.HTTP_200_OK, {'message': 'Restarting successful', 'service': service, 'action': 'kill, restart',
-                                      'status': status}
-        else:
-            log_write('ERROR', message='Restarting failed, service stoped', login=login, action='kill, restart', service=service,
-                      status=status)
-            return code.HTTP_500_INTERNAL_SERVER_ERROR, {'message': 'Restarting failed, service stoped', 'service': service,
-                                                         'action': 'kill, restart', 'status': status}
-    else:
-        error = systemctl_start(service, output=True)
-        status = systemctl_status(service, getstatus=True, sleep=1)
-    
-        if 'inactive' not in status:
-            log_write('INFO', message='Starting successful', login=login, action='start', service=service, status=status)
-            return code.HTTP_200_OK, {'message': 'Starting successful', 'service': service, 'action': 'start', 'status': status}
-        else:
-            log_write('ERROR', message='Starting failed', login=login, action='start', service=service, status=status, error=error)
-            return code.HTTP_500_INTERNAL_SERVER_ERROR, {'message': 'Starting failed', 'service': service, 'action': 'start',
-                                                         'status': status}
+    return {'message': 'Restarting successful', 'service': service, 'action': 'kill, restart', 'status': status}
 
 
-def systemctl_status(service, output=False, getstatus=False, sleep=0):
+def service_status(service, sleep=0):
     status_output = bash_command(f'sleep {sleep}; systemctl status {service}', output=True)
+    status_start = status_output.find('Active: ') + 8
+    status_end = status_output.find(')', status_start) + 1
     
-    output_data = []
-
-    if output:
-        output_data.append(status_output)
-
-    if getstatus:
-        status_start = status_output.find('Active: ') + 8
-        status_end = status_output.find(')', status_start) + 1
-        status = status_output[status_start:status_end]
-        output_data.append(status)
-    
-    return output_data
-
-
-def systemctl_start(service, output=False):
-    start_output = bash_command(f'sudo systemctl start {service}', output=output)
-
-    if output:
-        return start_output.replace('\n', ' ').strip()
-
-
-def systemctl_restart(service, output=False):
-    start_output = bash_command(f'sudo systemctl restart {service}', output=output)
-
-    if output:
-        return start_output.replace('\n', ' ').strip()
-
-
-def kill(port):
-    bash_command(f'sudo kill -9 $(sudo lsof -ti tcp:{port})')
+    return status_output[status_start:status_end]
