@@ -1,0 +1,13 @@
+[Unit]
+Description=Start RebootLab service
+After=network.target
+
+[Service]
+WorkingDirectory=<PROJECT DIRECTORY>
+ExecStart=/usr/bin/uvicorn main:app --reload --host <IP> --port <PORT>
+Restart=always
+User=<USER>
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
